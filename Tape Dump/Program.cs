@@ -150,10 +150,10 @@ namespace TapeDump
                             Console.Out.Write(")"); // precedence specifier
                             break;
                         case 0x0a00:
-                            Console.Out.Write(")"); // array index, aka ] - not verified
+                            Console.Out.Write("]"); // array index
                             break;
                         case 0x0c00:
-                            Console.Out.Write(","); // array index separator - not verified
+                            Console.Out.Write(","); // array index separator
                             break;
                         case 0x0e00:
                             Console.Out.Write("="); // assignment, aka :=
@@ -177,16 +177,16 @@ namespace TapeDump
                             Console.Out.Write(">");
                             break;
                         case 0x1c00:
-                            Console.Out.Write("<"); // not verified
+                            Console.Out.Write("<");
                             break;
                         case 0x1e00:
-                            Console.Out.Write("<>"); // not verified
+                            Console.Out.Write("#"); // comparison, aka <>
                             break;
                         case 0x2000:
                             Console.Out.Write("="); // comparison, aka ==
                             break;
                         case 0x2400:
-                            Console.Out.Write("("); // array index, aka [ - not verified
+                            Console.Out.Write("["); // array index
                             break;
                         case 0x2600:
                             Console.Out.Write("("); // precedence specifier
@@ -201,7 +201,7 @@ namespace TapeDump
                             Console.Out.Write("LET ");
                             break;
                         case 0x3600:
-                            Console.Out.Write("DIM "); // not verified
+                            Console.Out.Write("DIM ");
                             break;
                         // case 0x3800: // COM?
                         // case 0x3a00: // DEF?
@@ -233,10 +233,10 @@ namespace TapeDump
                             Console.Out.Write("NEXT ");
                             break;
                         case 0x4600:
-                            Console.Out.Write("GOSUB "); // not verified
+                            Console.Out.Write("GOSUB ");
                             break;
                         case 0x4800:
-                            Console.Out.Write("RETURN "); // not verified
+                            Console.Out.Write("RETURN ");
                             break;
                         case 0x4a00:
                             Console.Out.Write("END ");
@@ -293,17 +293,17 @@ namespace TapeDump
                             //case 0x05f: // ATN?
                             //case 0x06f: // EXP?
                             case 0x07f:
-                                Console.Out.Write("LOG"); // not verified
+                                Console.Out.Write("LOG");
                                 break;
                             case 0x08f:
-                                Console.Out.Write("ABS"); // not verified, wild guess
+                                Console.Out.Write("ABS");
                                 break;
                             //case 0x09f: // SQR?
                             case 0x0af:
                                 Console.Out.Write("INT");
                                 break;
                             case 0x0bf:
-                                Console.Out.Write("RND"); // not verified
+                                Console.Out.Write("RND");
                                 break;
                             //case 0x0cf: // SGN?
                             //case 0x0df: // ZER?
@@ -343,9 +343,6 @@ namespace TapeDump
                     {
                         switch (val)
                         {
-                            //case 0x0af:
-                            //    Console.Out.Write("INT");
-                            //    break;
                             default:
                                 Console.Out.Write('{');
                                 Console.Out.Write("val{0:X3}", val);
