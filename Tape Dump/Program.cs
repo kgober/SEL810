@@ -117,10 +117,9 @@ namespace TapeDump
                     switch (op)
                     {
                         case 0x0000:
-                            // not sure why these appear
-                            break;
+                            break; // end of expression (not needed before STEP)
                         case 0x0200:
-                            Console.Out.Write("\"");
+                            Console.Out.Write("\""); // literal string
                             while ((val = word & 0x00ff) >= 0x80)
                             {
                                 Console.Out.Write((Char)(val & 0x7f));
@@ -148,10 +147,10 @@ namespace TapeDump
                             Console.Out.Write(";");
                             break;
                         case 0x0800:
-                            Console.Out.Write(")");
+                            Console.Out.Write(")"); // precedence specifier
                             break;
                         case 0x0a00:
-                            Console.Out.Write("]"); // not verified
+                            Console.Out.Write(")"); // array index, aka ] - not verified
                             break;
                         case 0x0c00:
                             Console.Out.Write(","); // array index separator - not verified
@@ -187,10 +186,10 @@ namespace TapeDump
                             Console.Out.Write("="); // comparison, aka ==
                             break;
                         case 0x2400:
-                            Console.Out.Write("["); // not verified
+                            Console.Out.Write("("); // array index, aka [ - not verified
                             break;
                         case 0x2600:
-                            Console.Out.Write("(");
+                            Console.Out.Write("("); // precedence specifier
                             break;
                         case 0x3000:
                             Console.Out.Write(" >= ");
@@ -204,6 +203,8 @@ namespace TapeDump
                         case 0x3600:
                             Console.Out.Write("DIM "); // not verified
                             break;
+                        // case 0x3800: // COM?
+                        // case 0x3a00: // DEF?
                         case 0x3c00:
                             Console.Out.Write("REM");
                             while ((val = word & 0x00ff) >= 0x80)
@@ -240,12 +241,19 @@ namespace TapeDump
                         case 0x4a00:
                             Console.Out.Write("END ");
                             break;
+                        //case 0x4c00: // STOP?
+                        //case 0x4e00: // WAIT?
+                        //case 0x5000: // CALL?
+                        //case 0x5200: // DATA?
+                        //case 0x5400: // READ?
                         case 0x5600:
                             Console.Out.Write("PRINT ");
                             break;
                         case 0x5800:
                             Console.Out.Write("INPUT ");
                             break;
+                        //case 0x5a00: // RESTORE?
+                        //case 0x5c00: // MA? MAT?
                         case 0x5e00:
                             Console.Out.Write(" THEN ");
                             break;
@@ -255,6 +263,9 @@ namespace TapeDump
                         case 0x6200:
                             Console.Out.Write(" STEP ");
                             break;
+                        //case 0x6400: // NOT?
+                        //case 0x6600: // AND?
+                        //case 0x6800: // OR?
                         default:
                             Console.Out.Write('{');
                             Console.Out.Write("op{0:X4}", op);
@@ -275,21 +286,31 @@ namespace TapeDump
                             case 3:
                                 Console.Out.Write("{0:D0}", text[q++]);
                                 break;
-                            //case 0x03f:
-                            //    Console.Out.Write("SIN"); // not verified
-                            //    break;
+                            //case 0x01f: // TAB?
+                            //case 0x02f: // SIN?
+                            //case 0x03f: // COS?
+                            //case 0x04f: // TAN?
+                            //case 0x05f: // ATN?
+                            //case 0x06f: // EXP?
                             case 0x07f:
                                 Console.Out.Write("LOG"); // not verified
                                 break;
                             case 0x08f:
                                 Console.Out.Write("ABS"); // not verified, wild guess
                                 break;
+                            //case 0x09f: // SQR?
                             case 0x0af:
                                 Console.Out.Write("INT");
                                 break;
                             case 0x0bf:
                                 Console.Out.Write("RND"); // not verified
                                 break;
+                            //case 0x0cf: // SGN?
+                            //case 0x0df: // ZER?
+                            //case 0x0ef: // CO? CON?
+                            //case 0x0ff: // IDN?
+                            //case 0x10f: // INV?
+                            //case 0x11f: // TRN?
                             default:
                                 Console.Out.Write('{');
                                 Console.Out.Write("lit{0:X3}", val);
@@ -304,18 +325,19 @@ namespace TapeDump
                     }
                     else if (((val & 0x1f0) >= 0x010) && ((val & 0x00f) >= 4) && ((val & 0x00f) < 15))
                     {
+                        // regular variables: single letter, or letter followed by digit
                         Console.Out.Write((Char)(64 + ((val & 0x1f0) >> 4)));
                         if ((val & 0x00f) > 4) Console.Out.Write((Char)(43 + (val & 0x00f)));
                     }
                     else if (((val & 0x1f0) >= 0x010) && ((val & 0x00f) == 1))
                     {
+                        // one-dimensional arrays: single letter
                         Console.Out.Write((Char)(64 + ((val & 0x1f0) >> 4)));
-                        Console.Out.Write('#');
                     }
                     else if (((val & 0x1f0) >= 0x010) && ((val & 0x00f) == 2))
                     {
+                        // two-dimensional arrays: single letter
                         Console.Out.Write((Char)(64 + ((val & 0x1f0) >> 4)));
-                        Console.Out.Write('%');
                     }
                     else
                     {
