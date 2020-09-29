@@ -288,7 +288,9 @@ namespace TapeDump
                                 break;
                             //case 0x01f: // TAB?
                             //case 0x02f: // SIN?
-                            //case 0x03f: // COS?
+                            case 0x03f:
+                                Console.Out.Write("COS");
+                                break;
                             //case 0x04f: // TAN?
                             //case 0x05f: // ATN?
                             //case 0x06f: // EXP?
