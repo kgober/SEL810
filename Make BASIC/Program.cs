@@ -903,7 +903,7 @@ namespace MakeBASIC
             }
 
             // write checksum
-            n = 0x10000 - (sum & 0xffff);
+            n = (0x10000 - (sum & 0xffff)) & 0xffff;
             Console.Error.WriteLine("Checksum: {0:x4}", n);
             OUT.WriteByte((Byte)((n >> 8) & 255));
             OUT.WriteByte((Byte)(n & 255));
