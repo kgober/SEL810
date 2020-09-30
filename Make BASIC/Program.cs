@@ -54,6 +54,9 @@ namespace MakeBASIC
             String cmd;
             while ((cmd = Console.In.ReadLine()) != null)
             {
+                // ignore blank lines and comment lines
+                if ((cmd.Length == 0) || (cmd[0] == '#')) continue;
+
                 String arg = String.Empty;
                 Int32 p = cmd.IndexOf(' ');
                 if (p != -1)
