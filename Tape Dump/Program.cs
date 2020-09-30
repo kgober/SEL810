@@ -136,7 +136,11 @@ namespace TapeDump
                                     val = word & 0x01ff;
                                     break;
                                 }
-                                if (val < 0x80) break;
+                                if (val < 0x80)
+                                {
+                                    val = word & 0x01ff;
+                                    break;
+                                }
                                 Console.Out.Write((Char)(val & 0x7f));
                             }
                             break;
@@ -147,7 +151,7 @@ namespace TapeDump
                             Console.Out.Write(";");
                             break;
                         case 0x0800:
-                            Console.Out.Write(")"); // precedence specifier
+                            Console.Out.Write(")"); // precedence specifier or function arg
                             break;
                         case 0x0a00:
                             Console.Out.Write("]"); // array index
@@ -189,7 +193,7 @@ namespace TapeDump
                             Console.Out.Write("["); // array index
                             break;
                         case 0x2600:
-                            Console.Out.Write("("); // precedence specifier
+                            Console.Out.Write("("); // precedence specifier or function arg
                             break;
                         case 0x3000:
                             Console.Out.Write(" >= ");
