@@ -1,5 +1,5 @@
 // Program.cs
-// Copyright © 2020 Kenneth Gober
+// Copyright Â© 2020 Kenneth Gober
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -69,11 +69,6 @@ namespace TapeDump
             {
                 text[i] = (UInt16)(tape[p++] << 8);
                 text[i] |= tape[p++];
-                if ((n == 2619) && (i == 0x01f0) && (text[i] == 0xa0c0))
-                {
-                    text[i] = 0xa0c3; // patch for SEL810_basic_blackjack.bin
-                    Console.Error.WriteLine("Patching SEL810_basic_blackjack.bin 01F0:A0C0 -> A0C3");
-                }
                 sum += text[i];
             }
 
