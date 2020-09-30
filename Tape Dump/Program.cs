@@ -212,12 +212,13 @@ namespace TapeDump
         {
             // leader
             Int32 p = 0;
-            while (tape[p] == 0) p++;
+            while (tape[p] != 0xff) p++;
             if (p != 0) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p);
 
-            // program size
+            // header
+            p++; // skip FF byte
             Int32 len = -1;
-            for (Int32 i = 0; i < 3; i++)
+            for (Int32 i = 0; i < 2; i++)
             {
                 len <<= 8;
                 len |= tape[p++];
