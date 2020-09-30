@@ -117,32 +117,22 @@ namespace TapeDump
                     switch (op)
                     {
                         case 0x0000:
-                            break; // end of expression (not needed before STEP)
+                            break; // end of expression (not needed before ] or STEP)
                         case 0x0200:
                             Console.Out.Write("\""); // literal string
                             while ((val = word & 0x00ff) >= 0x80)
                             {
                                 Console.Out.Write((Char)(val & 0x7f));
-                                if (q == p)
-                                {
-                                    val = 0;
-                                    break;
-                                }
                                 word = text[q++];
-                                val = (word & 0xff00) >> 8;
-                                if ((val & 0xfe) == 0x02)
-                                {
-                                    Console.Out.Write("\"");
-                                    val = word & 0x01ff;
-                                    break;
-                                }
-                                if (val < 0x80)
-                                {
-                                    val = word & 0x01ff;
-                                    break;
-                                }
+                                val = (word >> 8) & 0x00ff;
+                                if (val < 0x80) break;
                                 Console.Out.Write((Char)(val & 0x7f));
                             }
+                            if ((word & 0x8000) == 0x8000) word = text[q++];
+                            f = (word & 0x8000) == 0x8000;
+                            op = word & 0x7e00;
+                            val = word & 0x01ff;
+                            if (op == 0x0200) Console.Out.Write("\"");
                             break;
                         case 0x0400:
                             Console.Out.Write(","); // PRINT modifier
