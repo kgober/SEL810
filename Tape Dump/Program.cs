@@ -124,51 +124,66 @@ namespace TapeDump
 
         static public void DumpAbsolute(Byte[] tape)
         {
-            // leader
-            Int32 p = 0;
-            while (tape[p] != 0xff) p++;
-            if (p != 0) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p);
-
-            // header
-            p++; // skip FF byte
-            Int32 addr = tape[p++] << 8;
-            addr |= tape[p++];
-            Console.Error.WriteLine("Load address: {0:x4}", addr);
-            Int32 len = -1;
-            for (Int32 i = 0; i < 2; i++)
+            Int32 p = 0, q = 0;
+            while (q < tape.Length)
             {
-                len <<= 8;
-                len |= tape[p++];
-            }
-            len = -len;
-
-            // image text
-            Console.Error.WriteLine("Reading {0:D0} words of image text...", len);
-            UInt16[] text = new UInt16[len];
-            Int32 b = 0;
-            for (Int32 i = 0; i < len; i += 64)
-            {
-                // block
-                Int32 sum = 0;
-                for (Int32 j = 0; j < 64; j++)
+                // leader
+                Int32 c = 0;
+                while ((p < tape.Length) && (tape[p] != 0xff))
                 {
-                    if ((i + j) == len) break;
-                    text[i + j] = (UInt16)(tape[p++] << 8);
-                    text[i + j] |= tape[p++];
-                    sum += text[i + j];
+                    if (tape[p++] != 0xba) c = 0; else c++;
+                    if (c == 3) break;
                 }
-                sum &= 0xffff;
+                if (c == 3)
+                {
+                    Console.Error.WriteLine("End marker found after {0:D0} bytes, ignoring {1:D0} following bytes", p - q - 3, tape.Length - p);
+                    break;
+                }
+                if (p != q) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
-                // checksum
-                UInt16 checksum = (UInt16)(tape[p++] << 8);
-                checksum |= tape[p++];
-                Console.Error.Write("Block {0:D0} Checksum: ", ++b); // tape={1:x4} inv={2:x4} sum={3:x4} diff={4:x4}", sum, checksum, checksum ^ 0xffff, sum + checksum, sum - checksum);
-                if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
-                else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                // header
+                p++; // skip FF byte
+                Int32 addr = tape[p++] << 8;
+                addr |= tape[p++];
+                Console.Error.WriteLine("Load address: {0:x4}", addr);
+                Int32 len = -1;
+                for (Int32 i = 0; i < 2; i++)
+                {
+                    len <<= 8;
+                    len |= tape[p++];
+                }
+                len = -len;
+
+                // image text
+                Console.Error.WriteLine("Reading {0:D0} words of image text...", len);
+                UInt16[] text = new UInt16[len];
+                Int32 b = 0;
+                for (Int32 i = 0; i < len; i += 64)
+                {
+                    // block
+                    Int32 sum = 0;
+                    for (Int32 j = 0; j < 64; j++)
+                    {
+                        if ((i + j) == len) break;
+                        text[i + j] = (UInt16)(tape[p++] << 8);
+                        text[i + j] |= tape[p++];
+                        sum += text[i + j];
+                    }
+                    sum &= 0xffff;
+
+                    // checksum
+                    UInt16 checksum = (UInt16)(tape[p++] << 8);
+                    checksum |= tape[p++];
+                    Console.Error.Write("Block {0:D0} Checksum: ", ++b);
+                    if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
+                    else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                }
+
+                DumpRaw(text);
+                Console.Out.WriteLine();
+
+                q = p;
             }
-
-            DumpRaw(text);
-            Console.Out.WriteLine();
         }
 
         static public void DumpRaw(UInt16[] text)
