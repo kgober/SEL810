@@ -964,7 +964,7 @@ namespace MakeBASIC
             if ((lineBuf == null) || (lineBuf.Count == 0)) return;
             lineBuf[1] = lineBuf.Count;
             Int32 q = 0;
-            while ((q < PRG.Count) && (PRG[q][0] > lineBuf[0])) q++;
+            while ((q < PRG.Count) && (PRG[q][0] < lineBuf[0])) q++;
             if (q == PRG.Count) // line is appended at end
             {
                 PRG.Add(lineBuf);
