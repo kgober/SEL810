@@ -27,28 +27,96 @@ namespace TapeDump
 {
     class Program
     {
+        static Char MODE;
         static Boolean DEBUG;
 
         static Int32 Main(String[] args)
         {
             if (args.Length == 0)
             {
-                Console.Error.WriteLine("Usage: TapeDump [-d] imagefile");
+                Console.Error.WriteLine("Usage: TapeDump [options] imagefile ...");
+                Console.Error.WriteLine("Options:");
+                Console.Error.WriteLine("  -b BASIC program tape");
+                Console.Error.WriteLine("  -r raw tape (default)");
+                Console.Error.WriteLine("  -d debug");
                 return 2;
             }
 
             Int32 ap = 0;
-            if (args[ap] == "-d")
+            while (ap < args.Length)
             {
-                DEBUG = true;
-                ap++;
+                String arg = args[ap++];
+                if (arg == "-d")
+                {
+                    DEBUG = true;
+                }
+                else if (arg == "-b")
+                {
+                    MODE = 'b';
+                }
+                else if (arg == "-r")
+                {
+                    MODE = '\0';
+                }
+                else
+                {
+                    Dump(arg);
+                }
             }
 
-            Console.Error.WriteLine("Reading tape...");
-            Byte[] tape = File.ReadAllBytes(args[ap]);
+            return 0;
+        }
+
+        static public void Dump(String fileName)
+        {
+            Console.Error.WriteLine("Reading {0}", fileName);
+            Byte[] tape = File.ReadAllBytes(fileName);
+
+            if (MODE == 'b')
+            {
+                DumpBASIC(tape);
+            }
+            else
+            {
+                DumpRaw(tape);
+            }
+        }
+
+        static public void DumpRaw(Byte[] tape)
+        {
             Int32 p = 0;
-            
+            while (p < tape.Length)
+            {
+                Console.Out.Write("{0:x4} ", p);
+                for (Int32 i = 0; i < 16; i++)
+                {
+                    if (p + i >= tape.Length)
+                    {
+                        Console.Out.Write("   ");
+                        continue;
+                    }
+                    Char c = ' ';
+                    if (i == 8) c = ':';
+                    if ((i & 7) == 4) c = '.';
+                    Console.Out.Write(c);
+                    Console.Out.Write("{0:x2}", tape[p + i]);
+                }
+                Console.Out.Write("  ");
+                for (Int32 i = 0; i < 16; i++)
+                {
+                    if (p + i >= tape.Length) break;
+                    Byte b = tape[p + i];
+                    Console.Out.Write(((b >= 160) && (b < 255)) ? (Char)(b & 0x7f) : '.');
+                }
+                Console.Out.WriteLine();
+                if (((p += 16) & 511) == 0) Console.Out.WriteLine();
+            }
+        }
+
+        static public void DumpBASIC(Byte[] tape)
+        {
             // leader
+            Int32 p = 0;
             while (tape[p] == 0) p++;
             if (p != 0) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p);
 
@@ -81,10 +149,7 @@ namespace TapeDump
             if (sum == 0) Console.Error.WriteLine("{0:x4} OK", checksum);
             else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
 
-            // dump BASIC program
             DumpBASIC(text);
-
-            return 0;
         }
 
         static public void DumpBASIC(UInt16[] text)
