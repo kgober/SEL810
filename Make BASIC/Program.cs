@@ -859,16 +859,16 @@ namespace MakeBASIC
             Console.Error.WriteLine("Program lines: {0:D0}", PRG.Count);
 
             // write tape leader
-            Console.Error.WriteLine("Writing 125 leader bytes...");
+            Console.Error.WriteLine("Writing 127 leader bytes...");
             FileStream OUT = new FileStream(args[0], FileMode.Create);
-            for (Int32 i = 0; i < 125; i++) OUT.WriteByte(0);
+            for (Int32 i = 0; i < 127; i++) OUT.WriteByte(0);
 
-            // write program size
-            Console.Error.WriteLine("Writing program size...");
+            // write header
+            Console.Error.WriteLine("Writing header...");
+            OUT.WriteByte(0xff);
             Int32 n = 0;
             for (Int32 i = 0; i < PRG.Count; i++) n += PRG[i].Count;
             n = -n;
-            OUT.WriteByte((Byte)((n >> 16) & 255));
             OUT.WriteByte((Byte)((n >> 8) & 255));
             OUT.WriteByte((Byte)(n & 255));
 
