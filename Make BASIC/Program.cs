@@ -968,6 +968,13 @@ namespace MakeBASIC
 
         static public void AddNum(List<Int32> lineBuf, Double number)
         {
+            if (number == 0.0)
+            {
+                lineBuf.Add(0);
+                lineBuf.Add(0);
+                return;
+            }
+
             // extract fields from IEEE double
             Int64 qword = BitConverter.DoubleToInt64Bits(number);
             Int32 sign = (Int32)((qword >> 63) & 1);
