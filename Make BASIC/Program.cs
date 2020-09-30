@@ -94,7 +94,7 @@ namespace MakeBASIC
                         break;
 
                     // "ENDVAL" adds a token to a statement that tells the interpreter when an
-                    // expression has ended. It does not appear to be needed before "STEP".
+                    // expression has ended. It does not appear to be needed before "STEP" or "]".
                     case "ENDVAL": // no arg
                         op = 0x0000;
                         BUF.Add(op);
@@ -214,8 +214,8 @@ namespace MakeBASIC
                         BUF.Add(op);
                         break;
 
-                    // operators that are followed by a variable name.
-                    case ",": // arg = variable name
+                    // operators that may be followed by a variable name.
+                    case ",": // arg = variable name (optional)
                     case "=":
                     case "+":
                     case "-":
@@ -241,11 +241,6 @@ namespace MakeBASIC
                             case '(': op = 0x2600; break;
                         }
                         val = GetVar(arg);
-                        if (val == 0)
-                        {
-                            Console.Error.WriteLine("Error: variable name required");
-                            break;
-                        }
                         BUF.Add(op | val);
                         break;
 
@@ -346,8 +341,8 @@ namespace MakeBASIC
                         BUF.Add(p);
                         break;
 
-                    // 2-character relational operators that are followed by a variable name.
-                    case "!=": // arg = variable name
+                    // 2-character relational operators that may be followed by a variable name.
+                    case "!=": // arg = variable name (optional)
                     case "==":
                     case ">=":
                     case "<=":
@@ -359,11 +354,6 @@ namespace MakeBASIC
                             case '<': op = 0x3200; break;
                         }
                         val = GetVar(arg);
-                        if (val == 0)
-                        {
-                            Console.Error.WriteLine("Error: variable name required");
-                            break;
-                        }
                         BUF.Add(op | val);
                         break;
 
@@ -724,8 +714,9 @@ namespace MakeBASIC
                         BUF.Add(p);
                         break;
 
-                    // "TO" clause of a "FOR" statement, starting with a variable name.
-                    case "TO": // arg = variable name
+                    // "TO" clause of a "FOR" statement, starting with a variable name
+                    // or a parenthesized expression
+                    case "TO": // arg = variable name (optional)
                         op = 0x6000;
                         if ((BUF.Count == 2) || ((BUF[2] & 0x7e00) != 0x4200))
                         {
@@ -733,11 +724,6 @@ namespace MakeBASIC
                             break;
                         }
                         val = GetVar(arg);
-                        if (val == 0)
-                        {
-                            Console.Error.WriteLine("Error: variable name required");
-                            break;
-                        }
                         BUF.Add(op | val);
                         break;
 
@@ -778,8 +764,9 @@ namespace MakeBASIC
                         AddNum(BUF, num);
                         break;
 
-                    // "STEP" clause of a "FOR" statement, starting with a variable name.
-                    case "STEP": // arg = variable name
+                    // "STEP" clause of a "FOR" statement, starting with a variable name
+                    // or a parenthesized expression.
+                    case "STEP": // arg = variable name (optional)
                         op = 0x6200;
                         if ((BUF.Count == 2) || ((BUF[2] & 0x7e00) != 0x4200))
                         {
@@ -787,11 +774,6 @@ namespace MakeBASIC
                             break;
                         }
                         val = GetVar(arg);
-                        if (val == 0)
-                        {
-                            Console.Error.WriteLine("Error: variable name required");
-                            break;
-                        }
                         BUF.Add(op | val);
                         break;
 
