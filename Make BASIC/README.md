@@ -4,6 +4,7 @@ Example:
 ```
 C:\>MakeBASIC.exe hello.bin
 line 10
+print
 str HELLO, WORLD!
 endstr
 line 20
@@ -17,5 +18,15 @@ Writing program size...
 Writing 18 words of program text...
 Checksum: ee66
 Writing 128 trailer bytes...
+
+C:\>TapeDump.exe hello.bin
+Reading tape...
+Skipped 125 leader bytes
+Reading 18 words of program text...
+Checksum: ee66 OK
+10  PRINT "HELLO, WORLD!"
+20  GOTO 10
+30  END
+
 C:\>
 ```
