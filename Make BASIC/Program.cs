@@ -30,6 +30,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 namespace MakeBASIC
@@ -828,6 +829,37 @@ namespace MakeBASIC
                         AddNum(BUF, num);
                         break;
 
+                    // "DEC" adds an arbitrary decimal word to the current line.  Use with care.
+                    case "DEC": // arg = decimal word value
+                        if (!Int32.TryParse(arg, out p))
+                        {
+                            Console.Error.WriteLine("Error: invalid decimal value {0}", arg);
+                            break;
+                        }
+                        else if ((p < -32768) || (p > 65535))
+                        {
+                            Console.Error.WriteLine("Error: value {0:D0} will not fit in a 16-bit word", p);
+                            break;
+                        }
+                        BUF.Add(p);
+                        break;
+
+                    // "HEX" adds an arbitrary hexadecimal word to the current line.  Use with care.
+                    case "HEX": // arg = hexadecimal word value
+                        if (!Int32.TryParse(arg, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out p))
+                        {
+                            Console.Error.WriteLine("Error: invalid hex value {0}", arg);
+                            break;
+                        }
+                        else if ((p < -32768) || (p > 65535))
+                        {
+                            Console.Error.WriteLine("Error: value {0:X4} will not fit in a 16-bit word", p);
+                            break;
+                        }
+                        BUF.Add(p);
+                        break;
+
+                    // "MAKE" ends input, like EOF.
                     case "MAKE": // no arg
                         end = true;
                         break;
