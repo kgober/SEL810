@@ -36,6 +36,7 @@ namespace TapeDump
             {
                 Console.Error.WriteLine("Usage: TapeDump [options] imagefile ...");
                 Console.Error.WriteLine("Options:");
+                Console.Error.WriteLine("  -a absolute loader tape");
                 Console.Error.WriteLine("  -b BASIC program tape");
                 Console.Error.WriteLine("  -r raw tape (default)");
                 Console.Error.WriteLine("  -d debug");
@@ -49,6 +50,10 @@ namespace TapeDump
                 if (arg == "-d")
                 {
                     DEBUG = true;
+                }
+                else if (arg == "-a")
+                {
+                    MODE = 'a';
                 }
                 else if (arg == "-b")
                 {
@@ -72,7 +77,11 @@ namespace TapeDump
             Console.Error.WriteLine("Reading {0}", fileName);
             Byte[] tape = File.ReadAllBytes(fileName);
 
-            if (MODE == 'b')
+            if (MODE == 'a')
+            {
+                DumpAbsolute(tape);
+            }
+            else if (MODE == 'b')
             {
                 DumpBASIC(tape);
             }
@@ -113,6 +122,92 @@ namespace TapeDump
             }
         }
 
+        static public void DumpAbsolute(Byte[] tape)
+        {
+            // leader
+            Int32 p = 0;
+            while (tape[p] != 0xff) p++;
+            if (p != 0) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p);
+
+            // header
+            p++; // skip FF byte
+            Int32 addr = tape[p++] << 8;
+            addr |= tape[p++];
+            Console.Error.WriteLine("Load address: {0:x4}", addr);
+            Int32 len = -1;
+            for (Int32 i = 0; i < 2; i++)
+            {
+                len <<= 8;
+                len |= tape[p++];
+            }
+            len = -len;
+
+            // image text
+            Console.Error.WriteLine("Reading {0:D0} words of image text...", len);
+            UInt16[] text = new UInt16[len];
+            Int32 b = 0;
+            for (Int32 i = 0; i < len; i += 64)
+            {
+                // block
+                Int32 sum = 0;
+                for (Int32 j = 0; j < 64; j++)
+                {
+                    if ((i + j) == len) break;
+                    text[i + j] = (UInt16)(tape[p++] << 8);
+                    text[i + j] |= tape[p++];
+                    sum += text[i + j];
+                }
+                sum &= 0xffff;
+
+                // checksum
+                UInt16 checksum = (UInt16)(tape[p++] << 8);
+                checksum |= tape[p++];
+                Console.Error.Write("Block {0:D0} Checksum: ", ++b); // tape={1:x4} inv={2:x4} sum={3:x4} diff={4:x4}", sum, checksum, checksum ^ 0xffff, sum + checksum, sum - checksum);
+                if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
+                else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+            }
+
+            DumpRaw(text);
+            Console.Out.WriteLine();
+        }
+
+        static public void DumpRaw(UInt16[] text)
+        {
+            Int32 p = 0;
+            while (p < text.Length)
+            {
+                Console.Out.Write("{0:x4} ", p);
+                for (Int32 i = 0; i < 8; i++)
+                {
+                    if (p + i >= text.Length)
+                    {
+                        Console.Out.Write("     ");
+                        continue;
+                    }
+                    Char c = ' ';
+                    if (i == 4) c = ':';
+                    if ((i & 3) == 2) c = '.';
+                    Console.Out.Write(c);
+                    Console.Out.Write("{0:x4}", text[p + i]);
+                }
+                Console.Out.Write("  ");
+                for (Int32 i = 0; i < 8; i++)
+                {
+                    if (p + i >= text.Length) break;
+                    Char c = (Char)((text[p + i] >> 8) & 127);
+                    if (c < 32) c = '.';
+                    if (c == 127) c = '.';
+                    Console.Out.Write(c);
+                    c = (Char)(text[p + i] & 127);
+                    if (c < 32) c = '.';
+                    if (c == 127) c = '.';
+                    Console.Out.Write(c);
+                }
+                Console.Out.WriteLine();
+                p += 8;
+            }
+        }
+
         static public void DumpBASIC(Byte[] tape)
         {
             // leader
@@ -121,19 +216,19 @@ namespace TapeDump
             if (p != 0) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p);
 
             // program size
-            Int32 n = 0xff;
+            Int32 len = -1;
             for (Int32 i = 0; i < 3; i++)
             {
-                n <<= 8;
-                n |= tape[p++];
+                len <<= 8;
+                len |= tape[p++];
             }
-            n = -n;
+            len = -len;
 
             // program text
-            Console.Error.WriteLine("Reading {0:D0} words of program text...", n);
-            UInt16[] text = new UInt16[n];
+            Console.Error.WriteLine("Reading {0:D0} words of program text...", len);
+            UInt16[] text = new UInt16[len];
             Int32 sum = 0;
-            for (Int32 i = 0; i < n; i++)
+            for (Int32 i = 0; i < len; i++)
             {
                 text[i] = (UInt16)(tape[p++] << 8);
                 text[i] |= tape[p++];
@@ -307,7 +402,7 @@ namespace TapeDump
                             Console.Out.Write("INPUT ");
                             break;
                         //case 0x5a00: // RESTORE?
-                        //case 0x5c00: // MA? MAT?
+                        //case 0x5c00: // MAT?
                         case 0x5e00:
                             Console.Out.Write(" THEN ");
                             break;
@@ -363,7 +458,7 @@ namespace TapeDump
                                 break;
                             //case 0x0cf: // SGN?
                             //case 0x0df: // ZER?
-                            //case 0x0ef: // CO? CON?
+                            //case 0x0ef: // CON?
                             //case 0x0ff: // IDN?
                             //case 0x10f: // INV?
                             //case 0x11f: // TRN?
@@ -418,7 +513,7 @@ namespace TapeDump
             // extract parts of SEL810 float
             // sfffffffffffffff 0ffffffeeeeeeeee
             Int32 sign = (w1 >> 15) & 1;
-            UInt32 frac = w1 ; // 15 bits from w1 (ignore sign bit)
+            UInt32 frac = w1; // 15 bits from w1 (ignore sign bit)
             frac <<= 6; // make room for 6 bits from w2
             frac |= (UInt32)((w2 >> 9) & 0x3f); // +6 = 21 bits
             frac <<= 11; // +11 = 32 bits (also shifts out sign bit)
