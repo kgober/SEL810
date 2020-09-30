@@ -142,7 +142,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -194,7 +194,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -314,7 +314,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -404,7 +404,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -536,7 +536,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -675,7 +675,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -770,7 +770,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
@@ -824,7 +824,7 @@ namespace MakeBASIC
                             break;
                         }
                         op |= 0x8000;
-                        val = 4;
+                        val = 0;
                         BUF.Add(op | val);
                         AddNum(BUF, num);
                         break;
