@@ -288,26 +288,26 @@ namespace TapeDump
 
         static public void DumpRaw(UInt16[] text, Int32 addrOffset)
         {
-            Int32 p = 0;
+            Int32 p = -(addrOffset % 8);
             while (p < text.Length)
             {
                 Console.Out.Write("{0:x4} ", p + addrOffset);
                 for (Int32 i = 0; i < 8; i++)
                 {
-                    if (p + i >= text.Length)
-                    {
-                        Console.Out.Write("     ");
-                        continue;
-                    }
-                    Char c = ' ';
-                    if (i == 4) c = ':';
-                    if ((i & 3) == 2) c = '.';
+                    String c = " ";
+                    if (i == 4) c = ".";
                     Console.Out.Write(c);
-                    Console.Out.Write("{0:x4}", text[p + i]);
+                    if ((p + i < 0) || (p + i >= text.Length)) Console.Out.Write("    ");
+                    else Console.Out.Write("{0:x4}", text[p + i]);
                 }
                 Console.Out.Write("  ");
                 for (Int32 i = 0; i < 8; i++)
                 {
+                    if (p + i < 0)
+                    {
+                        Console.Out.Write("  ");
+                        continue;
+                    }
                     if (p + i >= text.Length) break;
                     Char c = (Char)((text[p + i] >> 8) & 127);
                     if (c < 32) c = '.';
