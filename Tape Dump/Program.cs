@@ -29,9 +29,9 @@ namespace TapeDump
     {
         static Char MODE;
         static Boolean DEBUG;
-        static TextWriter OUT = Console.Out;
+        static Int32 SKIP;
+        static Stream DUMPFILE;
         static TextWriter ERR = Console.Error;
-        static String WRITE = null;
 
         static Int32 Main(String[] args)
         {
@@ -39,13 +39,14 @@ namespace TapeDump
             {
                 Console.Error.WriteLine("Usage: TapeDump [options] imagefile ...");
                 Console.Error.WriteLine("Options:");
-                Console.Error.WriteLine("  -a absolute loader tape");
-                Console.Error.WriteLine("  -b BASIC program tape");
-                Console.Error.WriteLine("  -o object (MNEMBLER) tape");
-                Console.Error.WriteLine("  -r raw tape (default)");
-                Console.Error.WriteLine("  -w imagefile - write a copy of the memory image to imagefile");
-                Console.Error.WriteLine("  -d debug");
-                Console.Error.WriteLine("  -q quiet");
+                Console.Error.WriteLine("  -a - interpret following imagefiles as absolute loader tapes");
+                Console.Error.WriteLine("  -b - interpret following imagefiles as BASIC program tapes");
+                Console.Error.WriteLine("  -o - interpret following imagefiles as object (MNEMBLER) tapes");
+                Console.Error.WriteLine("  -r - interpret following imagefiles as raw bytes (default)");
+                Console.Error.WriteLine("  -s num - skip first 'num' bytes of next imagefile");
+                Console.Error.WriteLine("  -w dumpfile - append a copy of the next tape file to dumpfile");
+                Console.Error.WriteLine("  -d - enable extra debug output to stderr");
+                Console.Error.WriteLine("  -q - disable messages to stderr");
                 return 2;
             }
 
@@ -61,9 +62,13 @@ namespace TapeDump
                 {
                     ERR = null;
                 }
+                else if (arg == "-s")
+                {
+                    SKIP = Int32.Parse(args[ap++]);
+                }
                 else if (arg == "-w")
                 {
-                    WRITE = args[ap++];
+                    DUMPFILE = new FileStream(args[ap++], FileMode.Append, FileAccess.Write);
                 }
                 else if (arg == "-a")
                 {
@@ -97,28 +102,30 @@ namespace TapeDump
 
             if (MODE == 'a')
             {
-                DumpAbsolute(tape);
+                DumpAbsolute(tape, SKIP);
             }
             else if (MODE == 'b')
             {
-                DumpBASIC(tape);
+                DumpBASIC(tape, SKIP);
             }
             else if (MODE == 'o')
             {
-                DumpObject(tape);
+                DumpObject(tape, SKIP);
             }
             else
             {
-                DumpRaw(tape);
+                DumpRaw(tape, SKIP);
             }
+
+            SKIP = 0;
         }
 
-        static public void DumpRaw(Byte[] tape)
+        static public void DumpRaw(Byte[] tape, Int32 startAt)
         {
-            Int32 p = 0;
+            Int32 p = startAt;
             while (p < tape.Length)
             {
-                Console.Out.Write("{0:x4} ", p);
+                Console.Out.Write("{0:x4} ", p - startAt);
                 for (Int32 i = 0; i < 16; i++)
                 {
                     if (p + i >= tape.Length)
@@ -144,9 +151,9 @@ namespace TapeDump
             }
         }
 
-        static public void DumpAbsolute(Byte[] tape)
+        static public void DumpAbsolute(Byte[] tape, Int32 startAt)
         {
-            Int32 p = 0, q = 0;
+            Int32 p = startAt, q = startAt;
             while (q < tape.Length)
             {
                 // leader
@@ -169,10 +176,10 @@ namespace TapeDump
                 if (p != q) if (ERR != null) ERR.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
                 // header
+                if (ERR != null) ERR.WriteLine("File header found at tape offset {0:D0}", p);
                 p++; // skip FF byte
                 Int32 addr = tape[p++] << 8;
                 addr |= tape[p++];
-                if (ERR != null) ERR.WriteLine("Load address: {0:x4}", addr);
                 Int32 len = -1;
                 for (Int32 i = 0; i < 2; i++)
                 {
@@ -182,7 +189,7 @@ namespace TapeDump
                 len = -len;
 
                 // image text
-                if (ERR != null) ERR.WriteLine("Reading {0:D0} words of image text...", len);
+                if (ERR != null) ERR.WriteLine("Loading {0:D0} words at address {1} (0x{2:x4})", len, OctalString(addr, 6, '0'), addr);
                 UInt16[] text = new UInt16[len];
                 Int32 b = 0;
                 for (Int32 i = 0; i < len; i += 64)
@@ -206,27 +213,27 @@ namespace TapeDump
                         else if (ERR != null) ERR.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
                 }
 
-                if (WRITE != null)
+                if (DUMPFILE != null)
                 {
-                    FileStream f = new FileStream(WRITE, FileMode.Append);
-                    for (Int32 i = 0; i < text.Length; i++)
+                    for (Int32 i = 0; i < len; i++)
                     {
-                        f.WriteByte((Byte)((text[i] >> 8) & 0xff));
-                        f.WriteByte((Byte)(text[i] & 0xff));
+                        DUMPFILE.WriteByte((Byte)((text[i] >> 8) & 0xff));
+                        DUMPFILE.WriteByte((Byte)(text[i] & 0xff));
                     }
-                    f.Close();
+                    DUMPFILE.Close();
+                    DUMPFILE = null;
                 }
 
-                DumpRaw(text, addr);
+                HexDump(text, addr);
                 Console.Out.WriteLine();
 
                 q = p;
             }
         }
 
-        static public void DumpObject(Byte[] tape)
+        static public void DumpObject(Byte[] tape, Int32 startAt)
         {
-            Int32 b = 0, p = 0, q = 0;
+            Int32 b = 0, p = startAt, q = startAt;
             while (q < tape.Length)
             {
                 // leader
@@ -310,7 +317,7 @@ namespace TapeDump
             }
         }
 
-        static public void DumpRaw(UInt16[] text, Int32 addrOffset)
+        static public void HexDump(UInt16[] text, Int32 addrOffset)
         {
             Int32 p = -(addrOffset % 8);
             while (p < text.Length)
@@ -347,9 +354,9 @@ namespace TapeDump
             }
         }
 
-        static public void DumpBASIC(Byte[] tape)
+        static public void DumpBASIC(Byte[] tape, Int32 startAt)
         {
-            Int32 p = 0, q = 0;
+            Int32 p = startAt, q = startAt;
             while (q < tape.Length)
             {
                 // leader
@@ -372,6 +379,7 @@ namespace TapeDump
                 if (p != q) if (ERR != null) ERR.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
                 // header
+                if (ERR != null) ERR.WriteLine("File header found at tape offset {0:D0}", p);
                 p++; // skip FF byte
                 Int32 len = -1;
                 for (Int32 i = 0; i < 2; i++)
@@ -407,25 +415,25 @@ namespace TapeDump
                     if (ERR != null) ERR.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
                 }
 
-                if (WRITE != null)
+                if (DUMPFILE != null)
                 {
-                    FileStream f = new FileStream(WRITE, FileMode.Append);
                     for (Int32 i = 0; i < text.Length; i++)
                     {
-                        f.WriteByte((Byte)((text[i] >> 8) & 0xff));
-                        f.WriteByte((Byte)(text[i] & 0xff));
+                        DUMPFILE.WriteByte((Byte)((text[i] >> 8) & 0xff));
+                        DUMPFILE.WriteByte((Byte)(text[i] & 0xff));
                     }
-                    f.Close();
+                    DUMPFILE.Close();
+                    DUMPFILE = null;
                 }
 
-                DumpBASIC(text);
+                ListBASIC(text);
                 Console.Out.WriteLine();
 
                 q = p;
             }
         }
 
-        static public void DumpBASIC(UInt16[] text)
+        static public void ListBASIC(UInt16[] text)
         {
             Int32 p = 0;
             Int32 err = 0;
