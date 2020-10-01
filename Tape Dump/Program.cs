@@ -278,7 +278,7 @@ namespace TapeDump
 
                 for (Int32 i = 0; i < block.Length; i++)
                 {
-                    Console.Out.WriteLine("{0:x2}-{1:x2}  {2:x6}", b, i, block[i]);
+                    Console.Out.WriteLine("{0:x2}-{1:x2}  {2:x6}  {3}", b, i, block[i], LoaderDirective(block[i]));
                 }
                 Console.Out.WriteLine();
 
@@ -676,6 +676,70 @@ namespace TapeDump
             qword |= frac;
             qword <<= 20; // shift to final position
             return BitConverter.Int64BitsToDouble(qword);
+        }
+
+        static public String OctalString(Int32 value, Int32 minWidth, Char padChar)
+        {
+            Boolean f = false;
+            if (minWidth < 0)
+            {
+                minWidth = -minWidth;
+                f = true;
+            }
+            String num = Convert.ToString(value, 8);
+            Int32 len = num.Length;
+            if (len >= minWidth) return num;
+            String pad = new String(padChar, minWidth - len);
+            if (f) return String.Concat(num, pad);
+            return String.Concat(pad, num);
+        }
+
+        static private Int32 addr = -1;
+
+        static public String LoaderDirective(Int32 word)
+        {
+            Int32 code = (word >> 17) & 15;
+            switch (word & 0xc10000) // 60200000
+            {
+                // non-memory instructions, or data
+                // 0ddddddd (000aaaaa, 001aaaaa, 0000bbxx
+                // 1ddddddd
+                case 0x000000:
+                case 0x010000:
+                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
+
+                // memory referencing instructions
+                // 2ddddddd
+                // 3ddddddd
+                case 0x400000:
+                case 0x410000:
+                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
+
+                // subroutine or common
+                // 4ddddddd
+                // 5ddddddd
+                case 0x800000:
+                case 0x810000:
+                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
+
+                // special
+                // 6d[0145]ddddd
+                // 7d[0145]ddddd
+                case 0xc00000:
+                    switch (code)
+                    {
+                        case 0: return String.Format("      {0}      ORG  '{1}", OctalString(word, 8, '0'), OctalString(addr = word & 0xffff, 5, '0'));
+                        case 1: return String.Format("      {0}      END", OctalString(word, 8, '0'));
+                        case 8: return String.Format("      {0} $", OctalString(word, 8, '0'));
+                        default: return "Unhandled";
+                    }
+
+                // literal referencing instructions
+                // 6d[2367]ddddd
+                // 7d[2367]ddddd
+                default:
+                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
+            }
         }
     }
 }
