@@ -31,6 +31,7 @@ namespace TapeDump
         static Boolean DEBUG;
         static TextWriter OUT = Console.Out;
         static TextWriter ERR = Console.Error;
+        static String WRITE = null;
 
         static Int32 Main(String[] args)
         {
@@ -42,6 +43,7 @@ namespace TapeDump
                 Console.Error.WriteLine("  -b BASIC program tape");
                 Console.Error.WriteLine("  -o object (MNEMBLER) tape");
                 Console.Error.WriteLine("  -r raw tape (default)");
+                Console.Error.WriteLine("  -w imagefile - write a copy of the memory image to imagefile");
                 Console.Error.WriteLine("  -d debug");
                 Console.Error.WriteLine("  -q quiet");
                 return 2;
@@ -58,6 +60,10 @@ namespace TapeDump
                 else if (arg == "-q")
                 {
                     ERR = null;
+                }
+                else if (arg == "-w")
+                {
+                    WRITE = args[ap++];
                 }
                 else if (arg == "-a")
                 {
@@ -198,6 +204,17 @@ namespace TapeDump
                     if (ERR != null) ERR.Write("Block {0:D0} Checksum: ", ++b);
                     if (sum == checksum) if (ERR != null) ERR.WriteLine("{0:x4} OK", sum);
                         else if (ERR != null) ERR.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                }
+
+                if (WRITE != null)
+                {
+                    FileStream f = new FileStream(WRITE, FileMode.Append);
+                    for (Int32 i = 0; i < text.Length; i++)
+                    {
+                        f.WriteByte((Byte)((text[i] >> 8) & 0xff));
+                        f.WriteByte((Byte)(text[i] & 0xff));
+                    }
+                    f.Close();
                 }
 
                 DumpRaw(text, addr);
@@ -388,6 +405,17 @@ namespace TapeDump
                 else
                 {
                     if (ERR != null) ERR.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
+                }
+
+                if (WRITE != null)
+                {
+                    FileStream f = new FileStream(WRITE, FileMode.Append);
+                    for (Int32 i = 0; i < text.Length; i++)
+                    {
+                        f.WriteByte((Byte)((text[i] >> 8) & 0xff));
+                        f.WriteByte((Byte)(text[i] & 0xff));
+                    }
+                    f.Close();
                 }
 
                 DumpBASIC(text);
