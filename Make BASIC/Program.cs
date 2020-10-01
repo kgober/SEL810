@@ -21,6 +21,7 @@
 
 
 // Future Improvements:
+// allow writing end tape marker BA BA BA 
 // READ, DATA, and RESTORE statements
 // DEF statement
 // COM statement
@@ -962,22 +963,20 @@ namespace MakeBASIC
 
             // extract fields from IEEE double
             Int64 qword = BitConverter.DoubleToInt64Bits(number);
-            Int32 sign = (Int32)((qword >> 63) & 1);
-            Int32 exp = ((Int32)((qword >> 52) & 2047)) - 1023;
-            Int32 frac = (Int32)((qword >> 20) & -1);
+            Int32 sign = (Int32)((qword >> 63) & 1); // sign (1 bit)
+            Int32 exp = ((Int32)((qword >> 52) & 2047)) - 1023; // exponent (11 bits)
+            Int32 frac = (Int32)((qword >> 21) & 0x7fffffff); // exponent (use 31 of 52 bits)
 
-            // IEEE format: (sign) 1.frac * 2^exp
-            // SEL810 format: (sign) 0.frac * 2^exp
-            frac = ((frac >> 1) & 0x7fffffff) + -2147483648;
-            exp++;
+            // IEEE format: (sign) 1.frac * 2^exp (sign/magnitude frac)
+            // SEL810 format: (sign) 0.frac * 2^exp (2's complement frac)
+            frac = (frac >> 1) | 0x40000000; // make implicit 1 explicit
+            exp++; // adjust exp
+            if (sign == 1) frac = -frac; // adjust frac if negative
 
             // construct SEL810 words
-            Int32 w1 = sign;
-            w1 <<= 15;
-            w1 |= ((frac >> 17) & 0x7fff);
-            Int32 w2 = (frac >> 11) & 0x3f;
-            w2 <<= 9;
-            w2 |= (exp & 511);
+            Int32 w1 = (frac >> 16) & 0xffff; // sign bit and 15 frac bits
+            Int32 w2 = (frac & 0xfc00) >> 1; // next 6 frac bits
+            w2 |= (exp & 0x01ff); // exponent
 
             lineBuf.Add(w1);
             lineBuf.Add(w2);
