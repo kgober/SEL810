@@ -193,7 +193,7 @@ namespace TapeDump
                     else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
                 }
 
-                DumpRaw(text);
+                DumpRaw(text, addr);
                 Console.Out.WriteLine();
 
                 q = p;
@@ -286,12 +286,12 @@ namespace TapeDump
             }
         }
 
-        static public void DumpRaw(UInt16[] text)
+        static public void DumpRaw(UInt16[] text, Int32 addrOffset)
         {
             Int32 p = 0;
             while (p < text.Length)
             {
-                Console.Out.Write("{0:x4} ", p);
+                Console.Out.Write("{0:x4} ", p + addrOffset);
                 for (Int32 i = 0; i < 8; i++)
                 {
                     if (p + i >= text.Length)
