@@ -195,6 +195,7 @@ namespace TapeDump
                 for (Int32 i = 0; i < len; i += 64)
                 {
                     // block
+                    b++;
                     Int32 sum = 0;
                     for (Int32 j = 0; j < 64; j++)
                     {
@@ -208,7 +209,7 @@ namespace TapeDump
                     // checksum
                     UInt16 checksum = (UInt16)(tape[p++] << 8);
                     checksum |= tape[p++];
-                    if (!QUIET) Console.Error.Write("Block {0:D0} Checksum: ", ++b);
+                    if (!QUIET) Console.Error.Write("Block {0:D0} Checksum: ", b);
                     if (sum == checksum) if (!QUIET) Console.Error.WriteLine("{0:x4} OK", sum);
                         else if (!QUIET) Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
                 }
@@ -269,6 +270,7 @@ namespace TapeDump
                     if (!QUIET) Console.Error.WriteLine("Unrecognized block header (not CR LF 00 00 and not CR LF 00 0F)");
                     break;
                 }
+                b++;
                 p++; // skip FF start-of-block marker
                 Int32 len = 54; // number of words
                 Int32[] block = new Int32[36];
@@ -303,7 +305,7 @@ namespace TapeDump
                 checksum |= tape[p++];
                 sum += checksum;
                 sum &= 0xffff;
-                if (!QUIET) Console.Error.Write("Block {0:D0} Checksum: ", ++b);
+                if (!QUIET) Console.Error.Write("Block {0:D0} Checksum: ", b);
                 if (sum == 0) if (!QUIET) Console.Error.WriteLine("{0:x4} OK", checksum);
                     else if (!QUIET) Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
 
