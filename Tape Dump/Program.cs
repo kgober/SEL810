@@ -40,10 +40,10 @@ namespace TapeDump
             {
                 Console.Error.WriteLine("Usage: TapeDump [options] imagefile ...");
                 Console.Error.WriteLine("Options:");
-                Console.Error.WriteLine("  -a - interpret following imagefiles as absolute loader tapes");
-                Console.Error.WriteLine("  -b - interpret following imagefiles as BASIC program tapes");
-                Console.Error.WriteLine("  -o - interpret following imagefiles as object (MNEMBLER) tapes");
-                Console.Error.WriteLine("  -r - interpret following imagefiles as raw bytes (default)");
+                Console.Error.WriteLine("  -a - interpret next imagefile as absolute loader tape");
+                Console.Error.WriteLine("  -b - interpret next imagefile as BASIC program tape");
+                Console.Error.WriteLine("  -o - interpret next imagefile as object (MNEMBLER) tape");
+                Console.Error.WriteLine("  -r - interpret next imagefile as raw bytes");
                 Console.Error.WriteLine("  -s num - skip first 'num' bytes of next imagefile");
                 Console.Error.WriteLine("  -w dumpfile - append a copy of the next tape file to dumpfile");
                 Console.Error.WriteLine("  -d - enable extra debug output to stderr");
@@ -85,7 +85,7 @@ namespace TapeDump
                 }
                 else if (arg == "-r")
                 {
-                    MODE = '\0';
+                    MODE = 'r';
                 }
                 else
                 {
@@ -103,22 +103,69 @@ namespace TapeDump
 
             if (MODE == 'a')
             {
+                if (!QUIET) Console.Error.WriteLine("Interpreting file as an absolute loader tape");
+                MODE = '\0';
                 DumpAbsolute(tape, SKIP);
             }
             else if (MODE == 'b')
             {
+                if (!QUIET) Console.Error.WriteLine("Interpreting tape as a BASIC program");
+                MODE = '\0';
                 DumpBASIC(tape, SKIP);
             }
             else if (MODE == 'o')
             {
+                if (!QUIET) Console.Error.WriteLine("Interpreting file as an object (MNEMBLER) tape");
+                MODE = '\0';
                 DumpObject(tape, SKIP);
+            }
+            else if (MODE == 'r')
+            {
+                if (!QUIET) Console.Error.WriteLine("Interpreting file as raw bytes");
+                MODE = '\0';
+                DumpRaw(tape, SKIP);
             }
             else
             {
-                DumpRaw(tape, SKIP);
+                DumpAuto(tape, SKIP);
             }
 
             SKIP = 0;
+        }
+
+        static public void DumpAuto(Byte[] tape, Int32 startAt)
+        {
+            Int32 p = startAt;
+            while ((p < tape.Length) && (tape[p] == 0)) p++;
+            if ((p < tape.Length) && tape[p] == 0xff)
+            {
+                p++;
+                if ((p < tape.Length) && ((tape[p] & 0x80) != 0))
+                {
+                    if (!QUIET) Console.Error.WriteLine("Interpreting file as a BASIC program tape");
+                    DumpBASIC(tape, startAt);
+                }
+                else if (((p + 2) < tape.Length) && ((tape[p + 2] & 0x80) != 0))
+                {
+                    if (!QUIET) Console.Error.WriteLine("Interpreting file as an absolute loader tape");
+                    DumpAbsolute(tape, startAt);
+                }
+                else
+                {
+                    if (!QUIET) Console.Error.WriteLine("Interpreting file as raw bytes");
+                    DumpRaw(tape, startAt);
+                }
+            }
+            else if (((p + 1) < tape.Length) && (tape[p] == 0x8d) && (tape[p + 1] == 0x8a))
+            {
+                if (!QUIET) Console.Error.WriteLine("Interpreting file as an object (MNEMBLER) tape");
+                DumpObject(tape, startAt);
+            }
+            else
+            {
+                if (!QUIET) Console.Error.WriteLine("Interpreting file as raw bytes");
+                DumpRaw(tape, startAt);
+            }
         }
 
         static public void DumpRaw(Byte[] tape, Int32 startAt)
@@ -361,14 +408,14 @@ namespace TapeDump
             Int32 p = -(offset % 8);
             while (p < count)
             {
-                Console.Out.Write("{0:x4} ", p + offset);
+                Console.Out.Write("{0:x4} ", offset + p);
                 for (Int32 i = 0; i < 8; i++)
                 {
                     String c = " ";
                     if (i == 4) c = ".";
                     Console.Out.Write(c);
                     if ((p + i < 0) || (p + i >= count)) Console.Out.Write("    ");
-                    else Console.Out.Write("{0:x4}", data[p + i]);
+                    else Console.Out.Write("{0:x4}", data[offset + p + i]);
                 }
                 Console.Out.Write("  ");
                 for (Int32 i = 0; i < 8; i++)
@@ -379,11 +426,11 @@ namespace TapeDump
                         continue;
                     }
                     if (p + i >= count) break;
-                    Char c = (Char)((data[p + i] >> 8) & 127);
+                    Char c = (Char)((data[offset + p + i] >> 8) & 127);
                     if (c < 32) c = '.';
                     if (c == 127) c = '.';
                     Console.Out.Write(c);
-                    c = (Char)(data[p + i] & 127);
+                    c = (Char)(data[offset + p + i] & 127);
                     if (c < 32) c = '.';
                     if (c == 127) c = '.';
                     Console.Out.Write(c);
