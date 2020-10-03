@@ -93,6 +93,16 @@ namespace TapeDump
                 }
             }
 
+            if (DUMPFILE != null)
+            {
+                for (Int32 i = 0; i < CORE.Length; i++)
+                {
+                    DUMPFILE.WriteByte((Byte)((CORE[addr + i] >> 8) & 0xff));
+                    DUMPFILE.WriteByte((Byte)(CORE[addr + i] & 0xff));
+                }
+                DUMPFILE.Close();
+            }
+
             return 0;
         }
 
