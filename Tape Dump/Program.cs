@@ -32,6 +32,7 @@ namespace TapeDump
         static Boolean QUIET;
         static Int32 SKIP;
         static Stream DUMPFILE;
+        static UInt16[] CORE = new UInt16[32768];
 
         static Int32 Main(String[] args)
         {
@@ -173,7 +174,7 @@ namespace TapeDump
                     if (!QUIET) Console.Error.WriteLine("End marker found after {0:D0} bytes, ignoring {1:D0} following bytes", p - q - 3, tape.Length - p);
                     break;
                 }
-                if (p != q) if (!QUIET) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
+                if ((p != q) && (!QUIET)) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
                 // header
                 if (!QUIET) Console.Error.WriteLine("File header found at tape offset {0:D0}", p);
@@ -190,7 +191,6 @@ namespace TapeDump
 
                 // image text
                 if (!QUIET) Console.Error.WriteLine("Loading {0:D0} words at address {1} (0x{2:x4})", len, OctalString(addr, 6, '0'), addr);
-                UInt16[] text = new UInt16[len];
                 Int32 b = 0;
                 for (Int32 i = 0; i < len; i += 64)
                 {
@@ -200,32 +200,35 @@ namespace TapeDump
                     for (Int32 j = 0; j < 64; j++)
                     {
                         if ((i + j) == len) break;
-                        text[i + j] = (UInt16)(tape[p++] << 8);
-                        text[i + j] |= tape[p++];
-                        sum += text[i + j];
+                        CORE[addr + i + j] = (UInt16)(tape[p++] << 8);
+                        CORE[addr + i + j] |= tape[p++];
+                        sum += CORE[addr + i + j];
                     }
                     sum &= 0xffff;
 
                     // checksum
                     UInt16 checksum = (UInt16)(tape[p++] << 8);
                     checksum |= tape[p++];
-                    if (!QUIET) Console.Error.Write("Block {0:D0} Checksum: ", b);
-                    if (sum == checksum) if (!QUIET) Console.Error.WriteLine("{0:x4} OK", sum);
-                        else if (!QUIET) Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                    if (!QUIET)
+                    {
+                        Console.Error.Write("Block {0:D0} Checksum: ", b);
+                        if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
+                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                    }
                 }
 
                 if (DUMPFILE != null)
                 {
                     for (Int32 i = 0; i < len; i++)
                     {
-                        DUMPFILE.WriteByte((Byte)((text[i] >> 8) & 0xff));
-                        DUMPFILE.WriteByte((Byte)(text[i] & 0xff));
+                        DUMPFILE.WriteByte((Byte)((CORE[addr + i] >> 8) & 0xff));
+                        DUMPFILE.WriteByte((Byte)(CORE[addr + i] & 0xff));
                     }
                     DUMPFILE.Close();
                     DUMPFILE = null;
                 }
 
-                HexDump(text, addr);
+                HexDump(CORE, addr, len);
                 Console.Out.WriteLine();
 
                 q = p;
@@ -234,7 +237,7 @@ namespace TapeDump
 
         static public void DumpObject(Byte[] tape, Int32 startAt)
         {
-            Int32 b = 0, p = startAt, q = startAt;
+            Int32 p = startAt, q = startAt;
             while (q < tape.Length)
             {
                 // leader
@@ -254,7 +257,7 @@ namespace TapeDump
                     if (!QUIET) Console.Error.WriteLine("End marker found after {0:D0} bytes, ignoring {1:D0} following bytes", p - q - 3, tape.Length - p);
                     break;
                 }
-                if (p != q) if (!QUIET) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
+                if ((p != q) && (!QUIET)) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
                 // header
                 if (((p + 3) >= tape.Length) || (tape[p] != 0x8d) || (tape[p + 1] != 0x8a) || (tape[p + 2] != 0))
@@ -263,75 +266,98 @@ namespace TapeDump
                     p++;
                     break;
                 }
-                p += 3;
-                if ((p == tape.Length) || (tape[p] == 0)) continue; // this is actually a trailer
-                if ((p < tape.Length) && (tape[p] != 0xff))
+                if (!QUIET) Console.Error.WriteLine("File header found at tape offset {0:D0}", p);
+                Int32 b = 0;
+                while (((p + 3) < tape.Length) && (tape[p] == 0x8d) && (tape[p + 1] == 0x8a) && (tape[p + 2] == 0))
                 {
-                    if (!QUIET) Console.Error.WriteLine("Unrecognized block header (not CR LF 00 00 and not CR LF 00 0F)");
-                    break;
-                }
-                b++;
-                p++; // skip FF start-of-block marker
-                Int32 len = 54; // number of words
-                Int32[] block = new Int32[36];
-                Int32 j = 0;
-                c = 0;
-                Int32 sum = 0;
-                for (Int32 i = 0; i < len; i++)
-                {
-                    Byte n = tape[p++];
-                    Int32 val = n << 8;
-                    block[j] <<= 8;
-                    block[j] |= n;
-                    if (++c == 3)
+                    p += 3;
+                    if ((p == tape.Length) || (tape[p] == 0)) continue; // this is actually a trailer
+                    if ((p < tape.Length) && (tape[p] != 0xff))
                     {
-                        j++;
-                        c = 0;
+                        if (!QUIET) Console.Error.WriteLine("Unrecognized block header (not CR LF 00 00 and not CR LF 00 0F)");
+                        break;
                     }
-                    n = tape[p++];
-                    val |= n;
-                    sum += val;
-                    block[j] <<= 8;
-                    block[j] |= n;
-                    if (++c == 3)
+                    b++;
+                    p++; // skip FF start-of-block marker
+                    Int32 len = 54; // number of words
+                    Int32[] block = new Int32[36];
+                    Int32 j = 0;
+                    c = 0;
+                    Int32 sum = 0;
+                    for (Int32 i = 0; i < len; i++)
                     {
-                        j++;
-                        c = 0;
+                        Byte n = tape[p++];
+                        Int32 val = n << 8;
+                        block[j] <<= 8;
+                        block[j] |= n;
+                        if (++c == 3)
+                        {
+                            j++;
+                            c = 0;
+                        }
+                        n = tape[p++];
+                        val |= n;
+                        sum += val;
+                        block[j] <<= 8;
+                        block[j] |= n;
+                        if (++c == 3)
+                        {
+                            j++;
+                            c = 0;
+                        }
                     }
-                }
 
-                // checksum
-                UInt16 checksum = (UInt16)(tape[p++] << 8);
-                checksum |= tape[p++];
-                sum += checksum;
-                sum &= 0xffff;
-                if (!QUIET) Console.Error.Write("Block {0:D0} Checksum: ", b);
-                if (sum == 0) if (!QUIET) Console.Error.WriteLine("{0:x4} OK", checksum);
-                    else if (!QUIET) Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
+                    // checksum
+                    UInt16 checksum = (UInt16)(tape[p++] << 8);
+                    checksum |= tape[p++];
+                    sum += checksum;
+                    sum &= 0xffff;
+                    if (!QUIET)
+                    {
+                        Console.Error.Write("Block {0:D0} Checksum: ", b);
+                        if (sum == 0) Console.Error.WriteLine("{0:x4} OK", checksum);
+                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
+                    }
 
-                for (Int32 i = 0; i < block.Length; i++)
-                {
-                    Console.Out.WriteLine("{0:x2}-{1:x2}  {2:x6}  {3}", b, i, block[i], LoaderDirective(block[i]));
+                    for (Int32 i = 0; i < block.Length; i++)
+                    {
+                        String cs = null;
+                        if ((block[i] & 0xff0000) == 0)
+                        {
+                            Int32 cc = (block[i] >> 8) & 0xff;
+                            Char c1 = ((cc > 160) && (cc < 255)) ? (Char)(cc & 0x7f) : '_';
+                            cc = block[i] & 0xff;
+                            Char c2 = ((cc > 160) && (cc < 255)) ? (Char)(cc & 0x7f) : '_';
+                            cs = String.Format(" \"{0}{1}\"", c1, c2);
+                        }
+                        Console.Out.WriteLine("{0:D3}-{1:D2}  0x{2:x6} {3}{4}", b, i, block[i], OctalString(block[i], 8, '0'), cs);
+                    }
+                    Console.Out.WriteLine();
                 }
-                Console.Out.WriteLine();
 
                 q = p;
             }
         }
 
-        static public void HexDump(UInt16[] text, Int32 addrOffset)
+        static public void Bound(Int32 addr, ref Int32 low, ref Int32 high)
         {
-            Int32 p = -(addrOffset % 8);
-            while (p < text.Length)
+            if (addr < low) low = addr;
+            if (addr > high) high = addr;
+        }
+
+        static public void HexDump(UInt16[] data, Int32 offset, Int32 count)
+        {
+            Int32 p = -(offset % 8);
+            while (p < count)
             {
-                Console.Out.Write("{0:x4} ", p + addrOffset);
+                Console.Out.Write("{0:x4} ", p + offset);
                 for (Int32 i = 0; i < 8; i++)
                 {
                     String c = " ";
                     if (i == 4) c = ".";
                     Console.Out.Write(c);
-                    if ((p + i < 0) || (p + i >= text.Length)) Console.Out.Write("    ");
-                    else Console.Out.Write("{0:x4}", text[p + i]);
+                    if ((p + i < 0) || (p + i >= count)) Console.Out.Write("    ");
+                    else Console.Out.Write("{0:x4}", data[p + i]);
                 }
                 Console.Out.Write("  ");
                 for (Int32 i = 0; i < 8; i++)
@@ -341,12 +367,12 @@ namespace TapeDump
                         Console.Out.Write("  ");
                         continue;
                     }
-                    if (p + i >= text.Length) break;
-                    Char c = (Char)((text[p + i] >> 8) & 127);
+                    if (p + i >= count) break;
+                    Char c = (Char)((data[p + i] >> 8) & 127);
                     if (c < 32) c = '.';
                     if (c == 127) c = '.';
                     Console.Out.Write(c);
-                    c = (Char)(text[p + i] & 127);
+                    c = (Char)(data[p + i] & 127);
                     if (c < 32) c = '.';
                     if (c == 127) c = '.';
                     Console.Out.Write(c);
@@ -378,7 +404,7 @@ namespace TapeDump
                     if (!QUIET) Console.Error.WriteLine("End marker found after {0:D0} bytes, ignoring {1:D0} following bytes", p - q - 3, tape.Length - p);
                     break;
                 }
-                if (p != q) if (!QUIET) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
+                if ((p != q) && (!QUIET)) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
                 // header
                 if (!QUIET) Console.Error.WriteLine("File header found at tape offset {0:D0}", p);
@@ -407,14 +433,11 @@ namespace TapeDump
                 checksum |= tape[p++];
                 sum += checksum;
                 sum &= 0xffff;
-                if (!QUIET) Console.Error.Write("Checksum: ");
-                if (sum == 0)
+                if (!QUIET)
                 {
-                    if (!QUIET) Console.Error.WriteLine("{0:x4} OK", checksum);
-                }
-                else
-                {
-                    if (!QUIET) Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
+                    Console.Error.Write("Checksum: ");
+                    if (sum == 0) Console.Error.WriteLine("{0:x4} OK", checksum);
+                    else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
                 }
 
                 if (DUMPFILE != null)
@@ -443,11 +466,11 @@ namespace TapeDump
             {
                 Int32 q = p;
                 UInt16 line = text[q++];
-                if (DEBUG)
+                if ((DEBUG) && (!QUIET))
                 {
-                    if (!QUIET) Console.Error.Write("{0:X4}:", p);
-                    for (Int32 i = p; i < p + text[q]; i++) if (!QUIET) Console.Error.Write(" {0:X4}", text[i]);
-                    if (!QUIET) Console.Error.WriteLine();
+                    Console.Error.Write("{0:X4}:", p);
+                    for (Int32 i = p; i < p + text[q]; i++) Console.Error.Write(" {0:X4}", text[i]);
+                    Console.Error.WriteLine();
                 }
                 p += text[q++];
                 Console.Out.Write("{0:D0}  ", line);
@@ -693,7 +716,7 @@ namespace TapeDump
                 }
                 Console.Out.WriteLine();
             }
-            if (err != 0) if (!QUIET) Console.Error.WriteLine("Parse Errors: {0:D0}", err);
+            if ((err != 0) && (!QUIET)) Console.Error.WriteLine("Parse Errors: {0:D0}", err);
         }
 
         static public Double SEL810Float(UInt16 w1, UInt16 w2)
