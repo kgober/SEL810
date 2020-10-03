@@ -260,25 +260,36 @@ namespace TapeDump
                 if ((p != q) && (!QUIET)) Console.Error.WriteLine("Skipped {0:D0} leader bytes", p - q);
 
                 // header
-                if (((p + 3) >= tape.Length) || (tape[p] != 0x8d) || (tape[p + 1] != 0x8a) || (tape[p + 2] != 0))
+                if (((p + 1) >= tape.Length) || (tape[p] != 0x8d) || (tape[p + 1] != 0x8a))
                 {
-                    if (!QUIET) Console.Error.WriteLine("Expected 8D 8A 00 header prefix not found");
+                    if (!QUIET) Console.Error.WriteLine("Expected CR LF header prefix not found");
                     p++;
                     break;
                 }
                 if (!QUIET) Console.Error.WriteLine("File header found at tape offset {0:D0}", p);
                 Int32 b = 0;
-                while (((p + 3) < tape.Length) && (tape[p] == 0x8d) && (tape[p + 1] == 0x8a) && (tape[p + 2] == 0))
+                while (((p + 2) < tape.Length) && (tape[p] == 0x8d) && (tape[p + 1] == 0x8a) && ((tape[p + 2] == 0) || (tape[p + 2] == 0xff)))
                 {
-                    p += 3;
-                    if ((p == tape.Length) || (tape[p] == 0)) continue; // this is actually a trailer
-                    if ((p < tape.Length) && (tape[p] != 0xff))
+                    if (tape[p + 2] == 0xff)
                     {
-                        if (!QUIET) Console.Error.WriteLine("Unrecognized block header (not CR LF 00 00 and not CR LF 00 0F)");
+                        p += 3; // block header
+                    }
+                    else if (((p + 3) < tape.Length) && (tape[p + 2] == 0) && (tape[p + 3] == 0xff))
+                    {
+                        p += 4; // block header
+                    }
+                    else if (tape[p + 2] == 0)
+                    {
+                        p += 3; // this is actually a trailer
+                        continue;
+                    }
+                    else
+                    {
+                        if (!QUIET) Console.Error.WriteLine("Unrecognized block header (not 8D 8A FF and not 8D 8A 00 FF)");
+                        p += 2;
                         break;
                     }
                     b++;
-                    p++; // skip FF start-of-block marker
                     Int32 len = 54; // number of words
                     Int32[] block = new Int32[36];
                     Int32 j = 0;
