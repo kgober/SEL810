@@ -1,12 +1,26 @@
-This utility displays a SEL810 BASIC program from a paper tape image.
+This utility displays the contents of a SEL810 paper tape image.  Supported paper tape image types include: absolute loader, object (MNEMBLER), BASIC program, and raw bytes.
 
-The tape image format is:
+Absolute loader tape format is:
 * some number of null bytes for the tape leader.
-* a 3-byte value which is the negative two's complement of the number of program words on the tape N.
-* N 16-bit words of program text (in big-endian order, MSB first)
-* a 16-bit checksum value.  If the modulo-65536 sum of program text words and checksum is 0, the checksum is good.
+* an FF byte marking the start of a file.
+* a 2-byte value which is the load address for the file.
+* a 2-byte value which is the negative two's complement of the number of program words N on the tape.
+* N 16-bit words of program text, displayed as a hex dump.
+* a 16-bit checkum.  The checksum passes if it equals the modulo-65536 sum of program text words.
+* some number of null bytes for the tape trailer.
 
-The format of a BASIC program is a sequence of lines.  Each line contains:
-* 1 word: line number
-* 1 word: length (includes line number and line length words)
-* length-2 words: tokens representing BASIC keywords, variables, etc.
+Object (MNEMBLER) tape format is:
+* some number of null bytes for the tape leader.
+* some number of loader blocks, where each block contains:
+* a block start marker (8D 8A FF, or 8D 8A 00 FF).
+* 36 24-bit words of loader directives, displayed in hex and octal.
+* a 16-bit checksum.  The checksum passes if the modulo-65536 sum of the block words and the checksum word are zero.
+
+BASIC program tape format is:
+* some number of null bytes for the tape leader.
+* an FF byte marking the start of a file.
+* a 2-byte value which is the negative two's complement of the number of program words N on the tape.
+* N 16-bit words of program text, displayed as a BASIC program listing.
+* a 16-bit checksum.  The checksum passes if the modulo-65536 sum of the program words and the checksum word are zero.
+
+Raw tape format is displayed as a hex dump of paper tape image bytes.
