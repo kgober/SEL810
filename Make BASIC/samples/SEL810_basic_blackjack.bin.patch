@@ -1,0 +1,6 @@
+load SEL810_basic_blackjack.bin
+line 415
+print
+str FIRST CARD IS
+endstr
+append,

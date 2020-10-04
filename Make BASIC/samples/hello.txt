@@ -1,0 +1,8 @@
+line 10
+print
+str HELLO, WORLD!
+endstr
+line 20
+goto 10
+line 30
+end
