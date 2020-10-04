@@ -503,6 +503,7 @@ namespace TapeDump
                         if ((word & 0xff0000) == 0)
                         {
                             // 00booooo - direct value: booooo (b = 0/1), no fixup needed
+                            CORE[PC] = zzzzz;
                             Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), Op(ref PC));
                             break;
                         }
