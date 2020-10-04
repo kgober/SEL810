@@ -19,11 +19,7 @@ Writing 18 words of program text...
 Checksum: ee66
 Writing 128 trailer bytes...
 
-C:\>TapeDump.exe -b hello.bin
-Reading hello.bin
-Skipped 127 leader bytes
-Reading 18 words of program text...
-Checksum: ee66 OK
+C:\>TapeDump.exe -q hello.bin
 10  PRINT "HELLO, WORLD!"
 20  GOTO 10
 30  END
