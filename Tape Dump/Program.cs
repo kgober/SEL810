@@ -28,11 +28,16 @@ namespace TapeDump
     class Program
     {
         static Char MODE;
+        static Boolean DUMP;
         static Boolean DEBUG;
         static Boolean QUIET;
         static Int32 SKIP;
         static Stream DUMPFILE;
         static UInt16[] CORE = new UInt16[32768];
+        static Int32 PC = 0;
+        static Int32 LO = 32768;
+        static Int32 HI = -1;
+
 
         static Int32 Main(String[] args)
         {
@@ -46,7 +51,8 @@ namespace TapeDump
                 Console.Error.WriteLine("  -r - interpret next imagefile as raw bytes");
                 Console.Error.WriteLine("  -s num - skip first 'num' bytes of next imagefile");
                 Console.Error.WriteLine("  -w dumpfile - append a copy of the next tape file to dumpfile");
-                Console.Error.WriteLine("  -d - enable extra debug output to stderr");
+                Console.Error.WriteLine("  -d - dump words without interpretation");
+                Console.Error.WriteLine("  -D - enable extra debug output to stderr");
                 Console.Error.WriteLine("  -q - disable messages to stderr");
                 return 2;
             }
@@ -55,13 +61,17 @@ namespace TapeDump
             while (ap < args.Length)
             {
                 String arg = args[ap++];
-                if (arg == "-d")
+                if (arg == "-D")
                 {
                     DEBUG = true;
                 }
                 else if (arg == "-q")
                 {
                     QUIET = true;
+                }
+                else if (arg == "-d")
+                {
+                    DUMP = true;
                 }
                 else if (arg == "-s")
                 {
@@ -97,8 +107,8 @@ namespace TapeDump
             {
                 for (Int32 i = 0; i < CORE.Length; i++)
                 {
-                    DUMPFILE.WriteByte((Byte)((CORE[addr + i] >> 8) & 0xff));
-                    DUMPFILE.WriteByte((Byte)(CORE[addr + i] & 0xff));
+                    DUMPFILE.WriteByte((Byte)((CORE[PC + i] >> 8) & 0xff));
+                    DUMPFILE.WriteByte((Byte)(CORE[PC + i] & 0xff));
                 }
                 DUMPFILE.Close();
             }
@@ -285,7 +295,8 @@ namespace TapeDump
                     DUMPFILE = null;
                 }
 
-                HexDump(CORE, addr, len);
+                if (DUMP) HexDump(CORE, addr, len);
+                else HexDump(CORE, addr, len); // TODO: more than this
                 Console.Out.WriteLine();
 
                 q = p;
@@ -387,18 +398,19 @@ namespace TapeDump
                         else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
                     }
 
-                    for (Int32 i = 0; i < block.Length; i++)
+                    if (DUMP)
                     {
-                        String cs = null;
-                        if ((block[i] & 0xff0000) == 0)
+                        for (Int32 i = 0; i < block.Length; i++)
                         {
-                            Int32 cc = (block[i] >> 8) & 0xff;
-                            Char c1 = ((cc > 160) && (cc < 255)) ? (Char)(cc & 0x7f) : '_';
-                            cc = block[i] & 0xff;
-                            Char c2 = ((cc > 160) && (cc < 255)) ? (Char)(cc & 0x7f) : '_';
-                            cs = String.Format(" \"{0}{1}\"", c1, c2);
+                            Int32 c1 = (block[i] >> 16) & 127; if (c1 < 32) c1 += 64; if (c1 == 127) c1 = 32;
+                            Int32 c2 = (block[i] >> 8) & 127; if (c2 < 32) c2 += 64; if (c2 == 127) c2 = 32;
+                            Int32 c3 = block[i] & 127; if (c3 < 32) c3 += 64; if (c3 == 127) c3 = 32;
+                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}{4}{5}", b, i, OctalString(block[i], 8), (Char)(c1), (Char)(c2), (Char)(c3));
                         }
-                        Console.Out.WriteLine("{0:D3}-{1:D2}  0x{2:x6} {3}{4}", b, i, block[i], OctalString(block[i], 8, '0'), cs);
+                    }
+                    else
+                    {
+                        DumpLoaderBlock(b, block);
                     }
                     Console.Out.WriteLine();
                 }
@@ -407,10 +419,259 @@ namespace TapeDump
             }
         }
 
-        static public void Bound(Int32 addr, ref Int32 low, ref Int32 high)
+        static public Double SEL810Float(UInt16 w1, UInt16 w2)
+        {
+            // extract parts of SEL810 float
+            // sfffffffffffffff 0ffffffeeeeeeeee
+            Int32 sign = (w1 >> 15) & 1;
+            UInt32 frac = w1; // 15 bits from w1 (ignore sign bit)
+            frac <<= 6; // make room for 6 bits from w2
+            frac |= (UInt32)((w2 >> 9) & 0x3f); // +6 = 21 bits
+            frac <<= 11; // +11 = 32 bits (also shifts out sign bit)
+            Int32 exp = (w2 & 0x00ff) - (((w2 & 0x0100) == 0) ? 0 : 256); // 2's complement
+
+            // check for zero
+            if (frac == 0) return 0.0;
+
+            // normalize for conversion to IEEE format
+            while ((frac & 0x80000000) == 0)
+            {
+                frac <<= 1;
+                exp--;
+            }
+
+            // convert to IEEE format
+            frac <<= 1;
+            exp--;
+            Int64 qword = sign; // sign bit
+            qword <<= 11; // make room for exponent
+            qword |= (UInt32)((exp + 1023) & 2047);
+            qword <<= 32; // make room for significand
+            qword |= frac;
+            qword <<= 20; // shift to final position
+            return BitConverter.Int64BitsToDouble(qword);
+        }
+
+        static public String OctalString(Int32 value)
+        {
+            return OctalString(value, 0, '0');
+        }
+
+        static public String OctalString(Int32 value, Int32 minWidth)
+        {
+            return OctalString(value, minWidth, (minWidth < 0) ? ' ' : '0');
+        }
+
+        static public String OctalString(Int32 value, Int32 minWidth, Char padChar)
+        {
+            Boolean f = false;
+            if (minWidth < 0)
+            {
+                minWidth = -minWidth;
+                f = true;
+            }
+            String num = Convert.ToString(value, 8);
+            Int32 len = num.Length;
+            if (len >= minWidth) return num;
+            String pad = new String(padChar, minWidth - len);
+            if (f) return String.Concat(num, pad);
+            return String.Concat(pad, num);
+        }
+
+        static public Int32 Bound(Int32 addr)
+        {
+            return Bound(addr, ref LO, ref HI);
+        }
+
+        static public Int32 Bound(Int32 addr, ref Int32 low, ref Int32 high)
         {
             if (addr < low) low = addr;
             if (addr > high) high = addr;
+            return addr;
+        }
+
+        static public void DumpLoaderBlock(Int32 blockNum, Int32[] block)
+        {
+            for (Int32 i = 0; i < block.Length; i++)
+            {
+                Int32 word = block[i];
+                Int32 code = (word >> 17) & 15;
+                UInt16 zzzzz = (UInt16)(word & 0x7fff);
+                switch ((word >> 22) & 3)
+                {
+                    case 0: // xxyzzzzz - direct value or memory reference (xx = 00-17)
+                        if ((word & 0xff0000) == 0)
+                        {
+                            // 00booooo - direct value: booooo (b = 0/1), no fixup needed
+                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), Op(ref PC));
+                            break;
+                        }
+                        // xxyzzzzz - memory referencing instructions (xx = 01-17)
+                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                        break;
+
+                    case 1: // tooooooo - direct/extended address constant (t = 2/3)
+                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                        break;
+
+                    case 2: // fooaaaaa - subroutine or common (f = 4/5)
+                        Int32 w2 = block[i + 1];
+                        Int32 w3 = block[i + 2];
+                        Int32 w4 = block[i + 3];
+                        Char s1 = (Char)((w3 >> 16) & 255); if (s1 < ' ') s1 += '@';
+                        Char s2 = (Char)((w3 >> 8) & 255); if (s2 < ' ') s2 += '@';
+                        Char s3 = (Char)(w3 & 255); if (s3 < ' ') s3 += '@';
+                        Char s4 = (Char)((w4 >> 16) & 255); if (s4 < ' ') s4 += '@';
+                        Char s5 = (Char)((w4 >> 8) & 255); if (s5 < ' ') s5 += '@';
+                        Char s6 = (Char)(w4 & 255); if (s6 < ' ') s6 += '@';
+                        String name = String.Format("{0}{1}{2}{3}{4}{5}", s1, s2, s3, s4, s5, s6);
+                        switch ((w2 >> 22) & 3)
+                        {
+                            case 0: // NAME
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}              NAME {3},{4}", blockNum, i, OctalString(word, 8), name, OctalString(zzzzz, 5));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                break;
+                            case 1: // CALL
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}       CALL {4}", blockNum, i, OctalString(word, 8), OctalString(PC++, 5), name);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                break;
+                            case 2: // CDE
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}       CDE  {4}", blockNum, i, OctalString(word, 8), OctalString(PC++, 5), name);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                break;
+                            case 3: // CRE
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}       CRE  {4}", blockNum, i, OctalString(word, 8), OctalString(PC++, 5), name);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
+                                break;
+                        }
+                        break;
+
+                    case 3: // sooaaaaa - loader directive or literal reference (s = 6/7)
+                        if ((word & 0x010000) != 0)
+                        {
+                            // literal referencing instructions
+                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                            break;
+                        }
+                        // loader directive
+                        switch (code)
+                        {
+                            case 0: // ORG
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}              ORG  '{3}", blockNum, i, OctalString(word, 8), OctalString(PC = zzzzz, 5));
+                                break;
+                            case 1: // END
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}              END  '{3}", blockNum, i, OctalString(word, 8), OctalString(zzzzz, 5));
+                                i = block.Length;
+                                break;
+                            case 8:
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  $", blockNum, i, OctalString(word, 8));
+                                i = block.Length;
+                                break;
+                            default:
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                                break;
+                        }
+                        break;
+                }
+            }
+        }
+
+        static public String Op(ref Int32 pc)
+        {
+            Int32 word = CORE[pc];
+            Int32 op = (word >> 12) & 15;
+            String X = ((word & 0x0800) != 0) ? ",1" : null;
+            Char I = ((word & 0x0400) != 0) ? '*' : ' ';
+            Boolean M = (word & 0x0200) != 0;
+            Int32 ad = word & 0x01ff;
+            Int32 ea = ((M) ? (pc & 0xfe00) : 0) | ad;
+            pc++;
+            switch (op)
+            {
+                case 0: // augmented 00 instructions
+                    Int32 sc = (word >> 6) & 15;
+                    switch (word & 0x003f)
+                    {
+                        case 0: return "HLT";
+                        case 1: return "RNA";
+                        case 2: return "NEG";
+                        case 3: return "CLA";
+                        case 4: return "TBA";
+                        case 5: return "TAB";
+                        case 6: return "IAB";
+                        case 7: return "CSB";
+                        case 8: return String.Format("RSA  {0:D2}", sc);
+                        case 9: return String.Format("LSA  {0:D2}", sc);
+                        case 10: return String.Format("FRA  {0:D2}", sc);
+                        case 11: return String.Format("FLL  {0:D2}", sc);
+                        case 12: return String.Format("FRL  {0:D2}", sc);
+                        case 13: return String.Format("RSL  {0:D2}", sc);
+                        case 14: return String.Format("LSL  {0:D2}", sc);
+                        case 15: return String.Format("FLA  {0:D2}", sc);
+                        case 16: return "ASC";
+                        case 17: return "SAS";
+                        case 18: return "SAZ";
+                        case 19: return "SAN";
+                        case 20: return "SAP";
+                        case 21: return "SOF";
+                        case 22: return "IBS";
+                        case 23: return "ABA";
+                        case 24: return "OBA";
+                        case 25: return "LCS";
+                        case 26: return "SNO";
+                        case 27: return "NOP";
+                        case 28: return "CNS";
+                        case 29: return "TOI";
+                        //case 30: return "LOB";
+                        case 31: return "OVS";
+                        case 32: return "TBP";
+                        case 33: return "TPB";
+                        case 34: return "TBV";
+                        case 35: return "TVB";
+                        //case 36: return "STX";
+                        //case 37: return "LIX";
+                        case 38: return "XPX";
+                        case 39: return "XPB";
+                        case 40: return "SXB";
+                        case 41: return String.Format("IXS  {0:D2}", sc);
+                        case 42: return "TAX";
+                        case 43: return "TXA";
+                        default: return String.Format("~Augmented 00 {0}!", OctalString(word, 5, '0'));
+                    }
+                case 1: return String.Format("LAA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 2: return String.Format("LBA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 3: return String.Format("STA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 4: return String.Format("STB{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 5: return String.Format("AMA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 6: return String.Format("SMA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 7: return String.Format("MPY{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 8: return String.Format("DIV{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 9: return String.Format("BRU{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 10: return String.Format("SPB{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 11: // augmented 13 instruction
+                    switch ((word >> 6) & 7)
+                    {
+                        case 4: return String.Format("SNS  {0:D2}", word & 0x000f);
+                        //case 6: PIE
+                        default: return String.Format("~Augmented 13 {0}!", OctalString(word, 5, '0'));
+                    }
+                case 12: return String.Format("IMS{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 13: return String.Format("CMA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                case 14: return String.Format("AMB{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
+                default: // augmented 17 instruction
+                    switch ((word >> 6) & 7)
+                    {
+                        default: return String.Format("~Augmented 17 {0}!", OctalString(word, 5, '0'));
+                    }
+            }
         }
 
         static public void HexDump(UInt16[] data, Int32 offset, Int32 count)
@@ -519,7 +780,8 @@ namespace TapeDump
                     DUMPFILE = null;
                 }
 
-                ListBASIC(text);
+                if (DUMP) HexDump(text, 0, len);
+                else ListBASIC(text);
                 Console.Out.WriteLine();
 
                 q = p;
@@ -785,103 +1047,6 @@ namespace TapeDump
                 Console.Out.WriteLine();
             }
             if ((err != 0) && (!QUIET)) Console.Error.WriteLine("Parse Errors: {0:D0}", err);
-        }
-
-        static public Double SEL810Float(UInt16 w1, UInt16 w2)
-        {
-            // extract parts of SEL810 float
-            // sfffffffffffffff 0ffffffeeeeeeeee
-            Int32 sign = (w1 >> 15) & 1;
-            UInt32 frac = w1; // 15 bits from w1 (ignore sign bit)
-            frac <<= 6; // make room for 6 bits from w2
-            frac |= (UInt32)((w2 >> 9) & 0x3f); // +6 = 21 bits
-            frac <<= 11; // +11 = 32 bits (also shifts out sign bit)
-            Int32 exp = (w2 & 0x00ff) - (((w2 & 0x0100) == 0) ? 0 : 256); // 2's complement
-
-            // check for zero
-            if (frac == 0) return 0.0;
-
-            // normalize for conversion to IEEE format
-            while ((frac & 0x80000000) == 0)
-            {
-                frac <<= 1;
-                exp--;
-            }
-
-            // convert to IEEE format
-            frac <<= 1;
-            exp--;
-            Int64 qword = sign; // sign bit
-            qword <<= 11; // make room for exponent
-            qword |= (UInt32)((exp + 1023) & 2047);
-            qword <<= 32; // make room for significand
-            qword |= frac;
-            qword <<= 20; // shift to final position
-            return BitConverter.Int64BitsToDouble(qword);
-        }
-
-        static public String OctalString(Int32 value, Int32 minWidth, Char padChar)
-        {
-            Boolean f = false;
-            if (minWidth < 0)
-            {
-                minWidth = -minWidth;
-                f = true;
-            }
-            String num = Convert.ToString(value, 8);
-            Int32 len = num.Length;
-            if (len >= minWidth) return num;
-            String pad = new String(padChar, minWidth - len);
-            if (f) return String.Concat(num, pad);
-            return String.Concat(pad, num);
-        }
-
-        static private Int32 addr = -1;
-
-        static public String LoaderDirective(Int32 word)
-        {
-            Int32 code = (word >> 17) & 15;
-            switch (word & 0xc10000) // 60200000
-            {
-                // non-memory instructions, or data
-                // 0ddddddd (000aaaaa, 001aaaaa, 0000bbxx
-                // 1ddddddd
-                case 0x000000:
-                case 0x010000:
-                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
-
-                // memory referencing instructions
-                // 2ddddddd *
-                // 3ddddddd
-                case 0x400000:
-                case 0x410000:
-                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
-
-                // subroutine or common
-                // 4ddddddd *
-                // 5ddddddd
-                case 0x800000:
-                case 0x810000:
-                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
-
-                // special
-                // 6d[0145]ddddd
-                // 7d[0145]ddddd
-                case 0xc00000:
-                    switch (code)
-                    {
-                        case 0: return String.Format("      {0}      ORG  '{1}", OctalString(word, 8, '0'), OctalString(addr = word & 0xffff, 5, '0'));
-                        case 1: return String.Format("      {0}      END", OctalString(word, 8, '0'));
-                        case 8: return String.Format("      {0} $", OctalString(word, 8, '0'));
-                        default: return "Unhandled";
-                    }
-
-                // literal referencing instructions
-                // 6d[2367]ddddd
-                // 7d[2367]ddddd
-                default:
-                    return String.Format("{0} {1}      {2}       {3}", OctalString(addr++, 5, '0'), OctalString(word, 8, '0'), "", "");
-            }
         }
     }
 }
