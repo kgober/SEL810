@@ -301,10 +301,10 @@ namespace TapeDump
                 }
                 else
                 {
-                    for (Int32 pc = addr; pc < addr + len; )
+                    for (Int32 pc = addr; pc < addr + len; pc++)
                     {
                         Int32 word = CORE[pc];
-                        Console.Out.WriteLine("{0:x4} {1:x4} {2} {3}", pc, word, Op(ref pc), Data(word));
+                        Console.Out.WriteLine("{0:x4} {1:x4} {2} {3}", pc, word, Op(pc), Data(word));
                     }
                 }
                 Console.Out.WriteLine();
@@ -504,43 +504,304 @@ namespace TapeDump
         {
             for (Int32 i = 0; i < block.Length; i++)
             {
-                Int32 word = block[i];
-                Console.Out.Write("{0:x6}  ", word);
-                Int32 code = (word >> 17) & 15;
-                UInt16 zzzzz = (UInt16)(word & 0x7fff);
-                switch ((word >> 22) & 3)
+                Int32 loadop = block[i];
+                Int32 code = (loadop >> 17) & 15;
+                UInt16 word = (UInt16)(loadop & 0xffff);
+                switch ((loadop >> 22) & 3)
                 {
                     case 0: // xxyzzzzz - direct value or memory reference (xx = 00-17)
-                        if ((word & 0xff0000) == 0)
+                        // 00x xxx 00y zzz zzz zzz zzz zzz - xxxx=0
+                        if ((loadop & 0xff0000) == 0)
                         {
                             // 00booooo - direct value: booooo (b = 0/1), no fixup needed
-                            CORE[PC] = zzzzz;
-                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), Op(ref PC));
+                            CORE[PC] = word;
+                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(word, 6), Op(PC++));
                             break;
                         }
+                        // 00x xxx yyy zzz zzz zzz zzz zzz - xxxx=1-15
                         // xxyzzzzz - memory referencing instructions (xx = 01-17)
-                        if (zzzzz < 512)
-                        CORE[PC] = zzzzz;
-                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), Op(ref PC));
+                        //if (word < 512)
+                        //CORE[PC] = word;
+                        //Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(word, 6), Op(PC++));
+                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} ~", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5));
                         break;
 
                     case 1: // tooooooo - direct/extended address constant (t = 2/3)
-                        Int32 R = (word >> 21) & 1;
-                        Int32 X = (word >> 16) & 1;
-                        Int32 I = (word >> 15) & 1;
+                        // 01R ccc cXI www www www www www - R=rel, cccc=opcode, X=index, I=indirect, wwwwwwwwwwwwwww=addr
+                        // => c ccc XIM mmm mmm mmm
+                        Int32 R = (loadop >> 21) & 1;
+                        Int32 X = (loadop >> 16) & 1;
+                        String Xs = (X == 1) ? ",1" : null;
+                        Int32 I = (loadop >> 15) & 1;
+                        Char Ic = (I == 1) ? '*' : ' ';
+                        Int32 mem = loadop & 0x7fff;
+                        Int32 M, ad;
                         switch (code)
                         {
+                            case 1:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} LAA{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 2:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} LBA{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5),  OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 3:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} STA{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5),  OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 4:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} STB{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 5:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} AMA{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 6:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} SMA{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 7:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} MPY{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 8:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} DIV{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 9:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} BRU{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 10:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} SPB{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
                             case 11:
-                                CORE[PC] = (UInt16)((zzzzz & 0x3fff) | (I << 14) | (X << 15));
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} DAC{5} '{6}{7}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(CORE[PC++], 5), (I==1) ? '*' : ' ', OctalString(zzzzz, 5), (X==1) ? ",1" : null);
+                                CORE[PC] = (UInt16)((word & 0x3fff) | (Ic << 14) | (X << 15));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} DAC{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(word, 5), Xs);
+                                break;
+                            case 12:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} IMS{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 13:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} CMA{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
+                                break;
+                            case 14:
+                                if (((mem & 0x7e00) == 0) && (R == 0))
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                else if ((mem & 0x7e00) == (PC & 0x7e00))
+                                {
+                                    M = 1;
+                                    ad = mem & 0x01ff;
+                                }
+                                else // TODO: fix for indirect
+                                {
+                                    M = 0;
+                                    ad = mem & 0x01ff;
+                                }
+                                CORE[PC] = (UInt16)((code << 12) | X << 11 | ((Ic == '*') ? 1 : 0) << 10 | M << 9 | ad);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} AMB{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(mem, 5), Xs);
                                 break;
                             case 15:
-                                CORE[PC] = zzzzz;
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} EAC{5} '{6}{7}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(CORE[PC++], 5), (I == 1) ? '*' : ' ', OctalString(zzzzz, 5), (X == 1) ? ",1" : null);
+                                CORE[PC] = word;
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} EAC{5} '{6}{7}", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6), Ic, OctalString(word, 5), Xs);
                                 break;
                             default:
-                                String tmp1 = String.Format("R={0:D0} X={1:D0} I={2:D0} Op={3:D0} Addr={4:D0}", R, X, I, code, zzzzz);
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}~", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), tmp1);
+                                if (loadop == 0x400000)
+                                {
+                                    CORE[PC] = 0;
+                                    Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} ZZZ  **", blockNum, i, OctalString(loadop, 8), OctalString(PC, 5), OctalString(CORE[PC++], 6));
+                                    break;
+                                }
+                                String tmp1 = String.Format("R={0:D0} X={1:D0} I={2:D0} Op={3:D0} Addr={4:D0}", R, X, I, code, word);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}~", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5), OctalString(word, 5), tmp1);
                                 break;
                         }
                         break;
@@ -559,25 +820,25 @@ namespace TapeDump
                         switch ((w2 >> 22) & 3)
                         {
                             case 0: // NAME
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}              NAME {3},{4}", blockNum, i, OctalString(word, 8), name, OctalString(zzzzz, 5));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}               NAME {3},{4}", blockNum, i, OctalString(loadop, 8), name, OctalString(word, 5));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 break;
                             case 1: // CALL
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}       CALL {4}", blockNum, i, OctalString(word, 8), OctalString(PC++, 5), name);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}        CALL {4}", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5), name);
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 break;
                             case 2: // CDE
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}       CDE  {4}", blockNum, i, OctalString(word, 8), OctalString(PC++, 5), name);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}        CDE  {4}", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5), name);
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 break;
                             case 3: // CRE
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}       CRE  {4}", blockNum, i, OctalString(word, 8), OctalString(PC++, 5), name);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}        CRE  {4}", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5), name);
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
@@ -586,28 +847,28 @@ namespace TapeDump
                         break;
 
                     case 3: // sooaaaaa - loader directive or literal reference (s = 6/7)
-                        if ((word & 0x010000) != 0)
+                        if ((loadop & 0x010000) != 0)
                         {
                             // literal referencing instructions
-                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                            Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} ~", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5));
                             break;
                         }
                         // loader directive
                         switch (code)
                         {
                             case 0: // ORG
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}              ORG  '{3}", blockNum, i, OctalString(word, 8), OctalString(PC = zzzzz, 5));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}               ORG  '{3}", blockNum, i, OctalString(loadop, 8), OctalString(PC = word, 5));
                                 break;
                             case 1: // END
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}              END  '{3}", blockNum, i, OctalString(word, 8), OctalString(zzzzz, 5));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}               END  '{3}", blockNum, i, OctalString(loadop, 8), OctalString(word, 5));
                                 i = block.Length;
                                 break;
                             case 8:
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  $", blockNum, i, OctalString(word, 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  $", blockNum, i, OctalString(loadop, 8));
                                 i = block.Length;
                                 break;
                             default:
-                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(loadop, 8));
                                 break;
                         }
                         break;
@@ -615,21 +876,21 @@ namespace TapeDump
             }
         }
 
-        static public String Op(ref Int32 pc)
+        static public String Op(Int32 pc)
         {
             Int32 word = CORE[pc];
             Int32 op = (word >> 12) & 15;
             String X = ((word & 0x0800) != 0) ? ",1" : null;
             Char I = ((word & 0x0400) != 0) ? '*' : ' ';
             Boolean M = (word & 0x0200) != 0;
+            Int32 sc = (word >> 6) & 15;
+            Int32 aug = word & 0x003f;
             Int32 ad = word & 0x01ff;
-            Int32 ea = ((M) ? (pc & 0xfe00) : 0) | ad;
-            pc++;
+            Int32 ea = ((M) ? (pc & 0x7e00) : 0) | ad;
             switch (op)
             {
                 case 0: // augmented 00 instructions
-                    Int32 sc = (word >> 6) & 15;
-                    switch (word & 0x003f)
+                    switch (aug)
                     {
                         case 0: return "HLT";
                         case 1: return "RNA";
@@ -661,21 +922,21 @@ namespace TapeDump
                         case 27: return "NOP";
                         case 28: return "CNS";
                         case 29: return "TOI";
-                        case 30: return String.Format("LOB  '{0}", OctalString(CORE[pc++] & 0x7fff, 5));
+                        case 30: return "LOB";
                         case 31: return "OVS";
                         case 32: return "TBP";
                         case 33: return "TPB";
                         case 34: return "TBV";
                         case 35: return "TVB";
-                        case 36: return String.Format("STX{0} '{1}", I, OctalString(CORE[pc++]));
-                        case 37: return String.Format("LIX{0} '{1}", I, OctalString(CORE[pc++]));
+                        case 36: return String.Format("STX{0}", I);
+                        case 37: return String.Format("LIX{0}", I);
                         case 38: return "XPX";
                         case 39: return "XPB";
                         case 40: return "SXB";
                         case 41: return String.Format("IXS  {0:D2}", sc);
                         case 42: return "TAX";
                         case 43: return "TXA";
-                        default: return String.Format("~Augmented 00 {0}!", OctalString(word, 5, '0'));
+                        default: return String.Format("DATA '{0}", OctalString(word, 6));
                     }
                 case 1: return String.Format("LAA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
                 case 2: return String.Format("LBA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
@@ -688,42 +949,42 @@ namespace TapeDump
                 case 9: return String.Format("BRU{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
                 case 10: return String.Format("SPB{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
                 case 11: // augmented 13 instruction
-                    switch ((word >> 6) & 7)
+                    switch (sc & 7)
                     {
-                        case 0: return String.Format("CEU{0} '{1},0", I, OctalString(CORE[pc++]));
-                        case 1: return String.Format("CEU{0} '{1},1", I, OctalString(CORE[pc++])); // TODO: MAP mode
-                        case 2: return String.Format("TEU{0} '{0}", I, OctalString(CORE[pc++]));
+                        case 0: return String.Format("CEU{0} '{1},0", I, OctalString(aug));
+                        case 1: return String.Format("CEU{0} '{1},1", I, OctalString(aug)); // TODO: MAP mode
+                        case 2: return String.Format("TEU{0} '{0}", I, OctalString(aug));
                         case 4: return String.Format("SNS  {0:D2}", word & 0x000f);
-                        case 6: switch (word & 0x003f)
+                        case 6: switch (aug)
                             {
-                                case 0: return String.Format("PIE  '{0}", OctalString(CORE[pc++]));
-                                case 1: return String.Format("PID  '{0}", OctalString(CORE[pc++]));
-                                default: return String.Format("~Augmented 13 {0}!", OctalString(word, 5, '0'));
+                                case 0: return String.Format("PIE{0}", I);
+                                case 1: return String.Format("PID{0}", I);
+                                default: return String.Format("DATA  '{0}", OctalString(word, 6, '0'));
                             }
-                        default: return String.Format("~Augmented 13 {0}!", OctalString(word, 5, '0'));
+                        default: return String.Format("DATA  '{0}", OctalString(word, 6, '0'));
                     }
                 case 12: return String.Format("IMS{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
                 case 13: return String.Format("CMA{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
                 case 14: return String.Format("AMB{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
                 default: // augmented 17 instruction
-                    switch ((word >> 6) & 7)
+                    switch (sc & 7)
                     {
-                        case 0: return String.Format("AOP  '{0},0", OctalString(word & 0x003f));
-                        case 1: return String.Format("AOP  '{0},1", OctalString(word & 0x003f));
-                        case 2: return String.Format("AIP  '{0},0,{1}", OctalString(word & 0x003f), (X == null) ? '0' : '1');
-                        case 3: return String.Format("AIP  '{0},1,{1}", OctalString(word & 0x003f), (X == null) ? '0' : '1');
-                        case 4: return String.Format("MOP{0} '{1},0", I, OctalString(word & 0x003f));
-                        case 5: return String.Format("MOP{0} '{1},1", I, OctalString(word & 0x003f)); // TODO: MAP mode
-                        case 6: return String.Format("MIP{0} '{1},0", I, OctalString(word & 0x003f));
-                        case 7: return String.Format("MIP{0} '{1},1", I, OctalString(word & 0x003f)); // TODO: MAP mode
-                        default: return String.Format("~Augmented 17 {0}!", OctalString(word, 5, '0'));
+                        case 0: return String.Format("AOP  '{0},0", OctalString(aug));
+                        case 1: return String.Format("AOP  '{0},1", OctalString(aug));
+                        case 2: return String.Format("AIP  '{0},0,{1}", OctalString(aug), (X == null) ? '0' : '1');
+                        case 3: return String.Format("AIP  '{0},1,{1}", OctalString(aug), (X == null) ? '0' : '1');
+                        case 4: return String.Format("MOP{0} '{1},0", I, OctalString(aug));
+                        case 5: return String.Format("MOP{0} '{1},1", I, OctalString(aug)); // TODO: MAP mode
+                        case 6: return String.Format("MIP{0} '{1},0", I, OctalString(aug));
+                        case 7: return String.Format("MIP{0} '{1},1", I, OctalString(aug)); // TODO: MAP mode
+                        default: return String.Format("DATA  '{0}", OctalString(word, 6, '0'));
                     }
             }
         }
 
         static public String Data(Int32 word)
         {
-            String o = OctalString(word, 5, '0');
+            String o = OctalString(word, 6, '0');
             Int32 b = (word >> 8) & 255;
             Char c1 = (Char)(((b >= 160) && (b < 255)) ? (b & 127) : 95);
             b = word & 255;
