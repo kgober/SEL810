@@ -295,8 +295,18 @@ namespace TapeDump
                     DUMPFILE = null;
                 }
 
-                if (DUMP) HexDump(CORE, addr, len);
-                else HexDump(CORE, addr, len); // TODO: more than this
+                if (DUMP)
+                {
+                    HexDump(CORE, addr, len);
+                }
+                else
+                {
+                    for (Int32 pc = addr; pc < addr + len; )
+                    {
+                        Int32 word = CORE[pc];
+                        Console.Out.WriteLine("{0:x4} {1:x4} {2} {3}", pc, word, Op(ref pc), Data(word));
+                    }
+                }
                 Console.Out.WriteLine();
 
                 q = p;
@@ -495,6 +505,7 @@ namespace TapeDump
             for (Int32 i = 0; i < block.Length; i++)
             {
                 Int32 word = block[i];
+                Console.Out.Write("{0:x6}  ", word);
                 Int32 code = (word >> 17) & 15;
                 UInt16 zzzzz = (UInt16)(word & 0x7fff);
                 switch ((word >> 22) & 3)
@@ -508,11 +519,30 @@ namespace TapeDump
                             break;
                         }
                         // xxyzzzzz - memory referencing instructions (xx = 01-17)
-                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                        if (zzzzz < 512)
+                        CORE[PC] = zzzzz;
+                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), Op(ref PC));
                         break;
 
                     case 1: // tooooooo - direct/extended address constant (t = 2/3)
-                        Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  ~", blockNum, i, OctalString(word, 8));
+                        Int32 R = (word >> 21) & 1;
+                        Int32 X = (word >> 16) & 1;
+                        Int32 I = (word >> 15) & 1;
+                        switch (code)
+                        {
+                            case 11:
+                                CORE[PC] = (UInt16)((zzzzz & 0x3fff) | (I << 14) | (X << 15));
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} DAC{5} '{6}{7}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(CORE[PC++], 5), (I==1) ? '*' : ' ', OctalString(zzzzz, 5), (X==1) ? ",1" : null);
+                                break;
+                            case 15:
+                                CORE[PC] = zzzzz;
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} EAC{5} '{6}{7}", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(CORE[PC++], 5), (I == 1) ? '*' : ' ', OctalString(zzzzz, 5), (X == 1) ? ",1" : null);
+                                break;
+                            default:
+                                String tmp1 = String.Format("R={0:D0} X={1:D0} I={2:D0} Op={3:D0} Addr={4:D0}", R, X, I, code, zzzzz);
+                                Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} {4} {5}~", blockNum, i, OctalString(word, 8), OctalString(PC, 5), OctalString(zzzzz, 5), tmp1);
+                                break;
+                        }
                         break;
 
                     case 2: // fooaaaaa - subroutine or common (f = 4/5)
@@ -631,14 +661,14 @@ namespace TapeDump
                         case 27: return "NOP";
                         case 28: return "CNS";
                         case 29: return "TOI";
-                        //case 30: return "LOB";
+                        case 30: return String.Format("LOB  '{0}", OctalString(CORE[pc++] & 0x7fff, 5));
                         case 31: return "OVS";
                         case 32: return "TBP";
                         case 33: return "TPB";
                         case 34: return "TBV";
                         case 35: return "TVB";
-                        //case 36: return "STX";
-                        //case 37: return "LIX";
+                        case 36: return String.Format("STX{0} '{1}", I, OctalString(CORE[pc++]));
+                        case 37: return String.Format("LIX{0} '{1}", I, OctalString(CORE[pc++]));
                         case 38: return "XPX";
                         case 39: return "XPB";
                         case 40: return "SXB";
@@ -660,8 +690,16 @@ namespace TapeDump
                 case 11: // augmented 13 instruction
                     switch ((word >> 6) & 7)
                     {
+                        case 0: return String.Format("CEU{0} '{1},0", I, OctalString(CORE[pc++]));
+                        case 1: return String.Format("CEU{0} '{1},1", I, OctalString(CORE[pc++])); // TODO: MAP mode
+                        case 2: return String.Format("TEU{0} '{0}", I, OctalString(CORE[pc++]));
                         case 4: return String.Format("SNS  {0:D2}", word & 0x000f);
-                        //case 6: PIE
+                        case 6: switch (word & 0x003f)
+                            {
+                                case 0: return String.Format("PIE  '{0}", OctalString(CORE[pc++]));
+                                case 1: return String.Format("PID  '{0}", OctalString(CORE[pc++]));
+                                default: return String.Format("~Augmented 13 {0}!", OctalString(word, 5, '0'));
+                            }
                         default: return String.Format("~Augmented 13 {0}!", OctalString(word, 5, '0'));
                     }
                 case 12: return String.Format("IMS{0} '{1}{2}", I, OctalString(ea, 5, '0'), X);
@@ -670,9 +708,27 @@ namespace TapeDump
                 default: // augmented 17 instruction
                     switch ((word >> 6) & 7)
                     {
+                        case 0: return String.Format("AOP  '{0},0", OctalString(word & 0x003f));
+                        case 1: return String.Format("AOP  '{0},1", OctalString(word & 0x003f));
+                        case 2: return String.Format("AIP  '{0},0,{1}", OctalString(word & 0x003f), (X == null) ? '0' : '1');
+                        case 3: return String.Format("AIP  '{0},1,{1}", OctalString(word & 0x003f), (X == null) ? '0' : '1');
+                        case 4: return String.Format("MOP{0} '{1},0", I, OctalString(word & 0x003f));
+                        case 5: return String.Format("MOP{0} '{1},1", I, OctalString(word & 0x003f)); // TODO: MAP mode
+                        case 6: return String.Format("MIP{0} '{1},0", I, OctalString(word & 0x003f));
+                        case 7: return String.Format("MIP{0} '{1},1", I, OctalString(word & 0x003f)); // TODO: MAP mode
                         default: return String.Format("~Augmented 17 {0}!", OctalString(word, 5, '0'));
                     }
             }
+        }
+
+        static public String Data(Int32 word)
+        {
+            String o = OctalString(word, 5, '0');
+            Int32 b = (word >> 8) & 255;
+            Char c1 = (Char)(((b >= 160) && (b < 255)) ? (b & 127) : 95);
+            b = word & 255;
+            Char c2 = (Char)(((b >= 160) && (b < 255)) ? (b & 127) : 95);
+            return String.Format("'{0}  {1:D5}  {2}{3}", o, word, c1, c2);
         }
 
         static public void HexDump(UInt16[] data, Int32 offset, Int32 count)
