@@ -174,6 +174,8 @@ namespace Emulator
             {
                 Int32 aug = mIR & 63;
                 Int32 sc = (mIR >> 6) & 15;
+                Boolean m = ((mIR & 0x200) != 0); // M flag
+                Boolean i = ((mIR & 0x400) != 0); // I flag
                 switch (aug)
                 {
                     case 0: // HLT - halt
@@ -322,38 +324,15 @@ namespace Emulator
                         mB = mVBR;
                         break;
                     case 36: // STX - store index
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        Write(ea, mX);
+                        break;
                     case 37: // LIX - load index
-                        Boolean m = ((mIR & 0x200) != 0); // M flag
-                        Boolean i = ((mIR & 0x400) != 0); // I flag
-                        if (!i)
-                        {
-                            ea = ++mPC;
-                        }
-                        else
-                        {
-                            mT = Read(++mPC);
-                            Boolean x = ((mT & 0x8000) != 0);
-                            i = ((mT & 0x4000) != 0);
-                            ea = (mT & 0x3fff) | ((m) ? mPC & 0x4000 : 0);
-                            if (x) ea += (mXP) ? mX : mB;
-                            while (i)
-                            {
-                                mT = Read(mT);
-                                x = ((mT & 0x8000) != 0);
-                                i = ((mT & 0x4000) != 0);
-                                ea = (mT & 0x3fff) | ((m) ? mPC & 0x4000 : 0);
-                                if (x) ea += (mXP) ? mX : mB;
-                            }
-                        }
-                        if (aug == 36)
-                        {
-                            Write(ea, mX);
-                        }
-                        else
-                        {
-                            mT = Read(ea);
-                            mX = mT;
-                        }
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        mT = Read(ea);
+                        mX = mT;
                         break;
                     case 38: // XPX - set index pointer to index register
                         mXP = true;
@@ -378,10 +357,30 @@ namespace Emulator
             }
             else if (op == 11)
             {
-                Int32 aug = (mIR >> 6) & 0x3f;
+                Int32 aug = (mIR >> 6) & 7;
                 Int32 unit = mIR & 0x3f;
+                Boolean m = ((mIR & 0x200) != 0); // M flag
+                Boolean i = ((mIR & 0x400) != 0); // I flag
                 switch (aug)
                 {
+                    case 0: // CEU - command external unit (skip mode)
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        mT = Read(ea);
+                        if (IO_Command(unit, mT, false)) ++mPC;
+                        break;
+                    case 1: // CEU - command external unit (wait mode)
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        mT = Read(ea);
+                        IO_Command(unit, mT, true);
+                        break;
+                    case 2: // TEU - test external unit
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        mT = Read(ea);
+                        if (IO_Test(unit, mT)) ++mPC;
+                        break;
                     case 4: // SNS - sense numbered switch
                         unit &= 15;
                         if (((mSR << unit) & 0x8000) == 0) ++mPC;
@@ -402,7 +401,54 @@ namespace Emulator
             }
             else if (op == 13)
             {
-
+                Int32 aug = (mIR >> 6) & 7;
+                Int32 unit = mIR & 0x3f;
+                Boolean m = ((mIR & 0x200) != 0); // M flag
+                Boolean i = ((mIR & 0x400) != 0); // I flag
+                Boolean r = ((mIR & 0x800) != 0); // R flag
+                switch (aug)
+                {
+                    case 0: // AOP - accumulator output to peripheral (skip mode)
+                        if (IO_Write(unit, mA, false)) ++mPC;
+                        break;
+                    case 1: // AOP - accumulator output to peripheral (wait mode)
+                        IO_Write(unit, mA, true);
+                        break;
+                    case 2: // AIP - accumulator input from peripheral (skip mode)
+                        if (r) mA = 0;
+                        if (IO_Read(unit, out r16, false)) ++mPC;
+                        mA += r16;
+                        break;
+                    case 3: // AIP - accumulator input from peripheral (wait mode)
+                        if (r) mA = 0;
+                        IO_Read(unit, out r16, true);
+                        mA += r16;
+                        break;
+                    case 4: // MOP - memory output to peripheral (skip mode)
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        mT = Read(ea);
+                        if (IO_Write(unit, mT, false)) ++mPC;
+                        break;
+                    case 5: // MOP - memory output to peripheral (wait mode)
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        mT = Read(ea);
+                        IO_Write(unit, mT, true);
+                        break;
+                    case 6: // MIP - memory input from peripheral (skip mode)
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        if (IO_Read(unit, out r16, false)) ++mPC;
+                        Write(ea, r16);
+                        break;
+                    case 7: // MIP - memory input from peripheral (wait mode)
+                        if (!i) ea = ++mPC;
+                        else ea = Indirect(++mPC, m);
+                        IO_Read(unit, out r16, true);
+                        Write(ea, r16);
+                        break;
+                }
             }
             else
             {
@@ -490,6 +536,21 @@ namespace Emulator
             mIR = Read(++mPC);
         }
 
+        private Int16 Indirect(Int16 addr, Boolean M)
+        {
+            Boolean x, i;
+            do
+            {
+                mT = Read(addr);
+                x = ((mT & 0x8000) != 0);
+                i = ((mT & 0x4000) != 0);
+                addr = (Int16)((mT & 0x3fff) | ((M) ? mPC & 0x4000 : 0));
+                if (x) addr += (mXP) ? mX : mB;
+            }
+            while (i);
+            return addr;
+        }
+
         private Int16 Read(Int32 addr)
         {
             Int16 n = mBPR[addr];
@@ -531,6 +592,27 @@ namespace Emulator
         private void ClearCF()
         {
             mCF = false;
+        }
+
+        private Boolean IO_Command(Int32 unit, Int16 command, Boolean wait)
+        {
+            return false;
+        }
+
+        private Boolean IO_Test(Int32 unit, Int16 command)
+        {
+            return false;
+        }
+
+        private Boolean IO_Write(Int32 unit, Int16 word, Boolean wait)
+        {
+            return false;
+        }
+
+        private Boolean IO_Read(Int32 unit, out Int16 word, Boolean wait)
+        {
+            word = 0;
+            return false;
         }
     }
 }
