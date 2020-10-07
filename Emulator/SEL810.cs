@@ -526,8 +526,8 @@ namespace Emulator
                         break;
                     case 14: // AMB - add memory to B
                         mT = Read(ea);
-                        r16 = (Int16)(mT + mB);
-                        if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
+                        r16 = (Int16)(mB + mT);
+                        if (((mB & 0x8000) == (mT & 0x8000)) && ((mB & 0x8000) != (r16 & 0x8000))) SetOVF();
                         mB = r16;
                         break;
                 }
