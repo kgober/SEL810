@@ -107,8 +107,8 @@ namespace TapeDump
             {
                 for (Int32 i = 0; i < CORE.Length; i++)
                 {
-                    DUMPFILE.WriteByte((Byte)((CORE[PC + i] >> 8) & 0xff));
-                    DUMPFILE.WriteByte((Byte)(CORE[PC + i] & 0xff));
+                    DUMPFILE.WriteByte((Byte)((CORE[i] >> 8) & 0xff));
+                    DUMPFILE.WriteByte((Byte)(CORE[i] & 0xff));
                 }
                 DUMPFILE.Close();
             }
