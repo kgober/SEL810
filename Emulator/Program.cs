@@ -69,6 +69,8 @@ namespace Emulator
                     Console.Out.WriteLine("r[egisters] - display registers");
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
+                    Console.Out.WriteLine(". [count] addr - set a read breakpoint at 'addr'");
+                    Console.Out.WriteLine("! [count] addr - set a write breakpoint at 'addr'");
                 }
                 else if (cmd == "a")
                 {
@@ -164,6 +166,52 @@ namespace Emulator
                 {
                     Disassemble(arg);
                     continue;
+                }
+                else if (cmd[0] == '.') // read breakpoint
+                {
+                    Int16 ct;
+                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                    if ((p = arg.IndexOf(' ')) == -1)
+                    {
+                        ct = -1;
+                    }
+                    else
+                    {
+                        if (!ParseWord(arg.Substring(0, p), out ct))
+                        {
+                            Console.Out.WriteLine("Unrecognized: {0}", arg.Substring(0, p));
+                            ct = 0;
+                        }
+                        else arg = arg.Substring(p + 1);
+                    }
+                    if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized: {0}", arg);
+                    }
+                    CPU.SetBPR(word, ct);
+                }
+                else if (cmd[0] == '!') // write breakpoint
+                {
+                    Int16 ct;
+                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                    if ((p = arg.IndexOf(' ')) == -1)
+                    {
+                        ct = -1;
+                    }
+                    else
+                    {
+                        if (!ParseWord(arg.Substring(0, p), out ct))
+                        {
+                            Console.Out.WriteLine("Unrecognized: {0}", arg.Substring(0, p));
+                            ct = 0;
+                        }
+                        else arg = arg.Substring(p + 1);
+                    }
+                    if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized: {0}", arg);
+                    }
+                    CPU.SetBPW(word, ct);
                 }
                 Console.Out.Write("810A>");
             }

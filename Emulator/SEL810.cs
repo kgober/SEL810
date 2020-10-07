@@ -38,7 +38,10 @@ namespace Emulator
         private Boolean mOVF, mCF, mXP;
         private volatile Boolean mHalt = true;
         private volatile Boolean mStep = false;
-        
+
+        private Int16[] mBPR = new Int16[CORE_SIZE];
+        private Int16[] mBPW = new Int16[CORE_SIZE];
+
         public SEL810()
         {
             mCPUThread = new Thread(new ThreadStart(CPUThread));
@@ -129,6 +132,16 @@ namespace Emulator
             mCPUThread.Join();
         }
 
+        public void SetBPR(Int16 addr, Int16 count)
+        {
+            mBPR[addr] = count;
+        }
+
+        public void SetBPW(Int16 addr, Int16 count)
+        {
+            mBPW[addr] = count;
+        }
+
         private void CPUThread()
         {
             while (true)
@@ -164,7 +177,7 @@ namespace Emulator
                 switch (aug)
                 {
                     case 0: // HLT - halt
-                        mIR = mCore[mPC];
+                        mIR = Read(mPC);
                         SetHalt();
                         return;
                     case 1: // RNA - round A
@@ -290,7 +303,7 @@ namespace Emulator
                         // TODO: implement
                         break;
                     case 30: // LOB - long branch
-                        mT = mCore[++mPC];
+                        mT = Read(++mPC);
                         mPC = (Int16)((mT & 0x7fff) - 1);
                         break;
                     case 31: // OVS - set overflow
@@ -318,14 +331,14 @@ namespace Emulator
                         }
                         else
                         {
-                            mT = mCore[++mPC];
+                            mT = Read(++mPC);
                             Boolean x = ((mT & 0x8000) != 0);
                             i = ((mT & 0x4000) != 0);
                             ea = (mT & 0x3fff) | ((m) ? mPC & 0x4000 : 0);
                             if (x) ea += (mXP) ? mX : mB;
                             while (i)
                             {
-                                mT = mCore[mT];
+                                mT = Read(mT);
                                 x = ((mT & 0x8000) != 0);
                                 i = ((mT & 0x4000) != 0);
                                 ea = (mT & 0x3fff) | ((m) ? mPC & 0x4000 : 0);
@@ -334,11 +347,11 @@ namespace Emulator
                         }
                         if (aug == 36)
                         {
-                            mCore[ea] = mX;
+                            Write(ea, mX);
                         }
                         else
                         {
-                            mT = mCore[ea];
+                            mT = Read(ea);
                             mX = mT;
                         }
                         break;
@@ -376,12 +389,12 @@ namespace Emulator
                     case 6:
                         if (unit == 0) // PIE - priority interrupt enable
                         {
-                            mT = mCore[++mPC];
+                            mT = Read(++mPC);
                             // TODO: implement
                         }
                         else if (unit == 1) // PID - priority interrupt disable
                         {
-                            mT = mCore[++mPC];
+                            mT = Read(++mPC);
                             // TODO: implement
                         }
                         break;
@@ -400,7 +413,7 @@ namespace Emulator
                 if (x) ea += (mXP) ? mX : mB;
                 while (i)
                 {
-                    mT = mCore[ea];
+                    mT = Read(ea);
                     i = ((mT & 0x4000) != 0);
                     x = ((mT & 0x8000) != 0);
                     ea = (mPC & 0x4000) | (mT & 0x3fff);
@@ -409,40 +422,40 @@ namespace Emulator
                 switch (op)
                 {
                     case 1: // LAA - load A accumulator
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         mA = mT;
                         break;
                     case 2: // LBA - load B accumulator
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         mB = mT;
                         break;
                     case 3: // STA - store A accumulator
-                        mCore[ea] = mA;
+                        Write(ea, mA);
                         break;
                     case 4: // STB - store B accumulator
-                        mCore[ea] = mB;
+                        Write(ea, mB);
                         break;
                     case 5: // AMA - add memory to A
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         r16 = (Int16)(mA + mT);
                         if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
                         mA = r16;
                         break;
                     case 6: // SMA - subtract memory from A
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         r16 = (Int16)(mA - mT);
                         if (((mA & 0x8000) != (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
                         mA = r16;
                         break;
                     case 7: // MPY - multiply
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         r32 = mT * mB;
                         if ((mT == -32768) && (mB == -32768)) SetOVF();
                         mB = (Int16)(r32 & 0x7fff);
                         mA = (Int16)((r32 >> 15) & 0xffff);
                         break;
                     case 8: // DIV - divide
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         r32 = (mA <<  15) | (mB & 0x7fff);
                         if (mA >= mT) SetOVF();
                         mB = (Int16)(r32 % mT);
@@ -452,20 +465,21 @@ namespace Emulator
                         mPC = (Int16)(ea - 1);
                         break;
                     case 10: // SPB - store place and branch
-                        mCore[ea] = ++mPC;
+                        Write(ea, ++mPC);
                         mPC = (Int16)(ea);
                         break;
                     case 12: // IMS - increment memory and skip
-                        mT = mCore[ea]++;
-                        if (mCore[ea] == 0) ++mPC;
+                        mT = Read(ea);
+                        Write(ea, ++mT);
+                        if (mT == 0) ++mPC;
                         break;
                     case 13: // CMA - compare memory and accumulator
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         if (mA >= mT) ++mPC;
                         if (mA == mT) ++mPC;
                         break;
                     case 14: // AMB - add memory to B
-                        mT = mCore[ea];
+                        mT = Read(ea);
                         r16 = (Int16)(mT + mB);
                         if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
                         mB = r16;
@@ -473,11 +487,29 @@ namespace Emulator
                 }
             }
             if (mIR != 7) mCF = false;
-            mIR = mCore[++mPC];
+            mIR = Read(++mPC);
+        }
+
+        private Int16 Read(Int32 addr)
+        {
+            Int16 n = mBPR[addr];
+            if ((n == 1) || (n == -1)) SetHalt();
+            if (n > 0) mBPR[addr]--;
+            return mCore[addr];
+        }
+
+        private Int16 Write(Int32 addr, Int16 value)
+        {
+            Int16 n = mBPW[addr];
+            if ((n == 1) || (n == -1)) SetHalt();
+            if (n > 0) mBPW[addr]--;
+            mCore[addr] = value;
+            return value;
         }
 
         private void SetHalt()
         {
+            if (!mHalt) Console.Out.WriteLine("HALTED");
             mHalt = true;
         }
 
