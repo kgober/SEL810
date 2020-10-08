@@ -36,6 +36,7 @@ namespace Emulator
             while (ap < args.Length)
             {
                 String arg = args[ap++];
+                LoadState(arg);
             }
 
             Console.Out.Write("810A>");
@@ -69,7 +70,7 @@ namespace Emulator
                     Console.Out.WriteLine("i[input] filename - read paper tape input from 'filename'");
                     Console.Out.WriteLine("l[oad] [addr] filename - load memory from 'filename' at 'addr' (default 0)");
                     Console.Out.WriteLine("o[utput] filename - write paper tape output to 'filename'");
-                    Console.Out.WriteLine("q[uit] - exit emulator");
+                    Console.Out.WriteLine("q[uit] [filename] - exit emulator, optionally saving state to 'filename'");
                     Console.Out.WriteLine("r[egisters] - display registers");
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
                     Console.Out.WriteLine("t[oggle] [val] - display or set sense switches");
@@ -195,6 +196,8 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'q') // quit
                 {
+                    CPU.Stop();
+                    if (arg.Length != 0) SaveState(arg);
                     CPU.Exit();
                     break;
                 }
@@ -284,6 +287,46 @@ namespace Emulator
             }
         }
 
+        // TODO: include OVF, CF, X, XP, PPR, VBR, maybe breakpoints?
+        static public void LoadState(String fileName)
+        {
+            Byte[] buf = File.ReadAllBytes(fileName);
+            Int32 p = 0, q = 0;
+            CPU.PC = BitConverter.ToInt16(buf, p);
+            CPU.IR = BitConverter.ToInt16(buf, p += 2);
+            CPU.A = BitConverter.ToInt16(buf, p += 2);
+            CPU.B = BitConverter.ToInt16(buf, p += 2);
+            CPU.T = BitConverter.ToInt16(buf, p += 2);
+            CPU.SR = BitConverter.ToInt16(buf, p += 2);
+            while ((p += 2) < buf.Length)
+            {
+                CPU[q++] = BitConverter.ToInt16(buf, p);
+            }
+        }
+
+        static public void SaveState(String fileName)
+        {
+            FileStream f = new FileStream(fileName, FileMode.Create, FileAccess.Write);
+            Byte[] PC = BitConverter.GetBytes(CPU.PC);
+            Byte[] IR = BitConverter.GetBytes(CPU.IR);
+            Byte[] A = BitConverter.GetBytes(CPU.A);
+            Byte[] B = BitConverter.GetBytes(CPU.B);
+            Byte[] T = BitConverter.GetBytes(CPU.T);
+            Byte[] SR = BitConverter.GetBytes(CPU.SR);
+            f.Write(PC, 0, 2);
+            f.Write(IR, 0, 2);
+            f.Write(A, 0, 2);
+            f.Write(B, 0, 2);
+            f.Write(T, 0, 2);
+            f.Write(SR, 0, 2);
+            for (Int32 i = 0; i < SEL810.CORE_SIZE; i++)
+            {
+                Byte[] buf = BitConverter.GetBytes(CPU[i]);
+                f.Write(buf, 0, 2);
+            }
+            f.Close();
+        }
+
         static Int16 DUMP_ARG = -1;
         static public void Dump(String arg)
         {
@@ -359,7 +402,7 @@ namespace Emulator
             else if (!ParseWord(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
             if (p != -1)
             {
-                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Op(p, CPU[p], 16));
+                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Op(p, CPU[p], 20));
                 AUTO_CMD = "unassemble";
                 DISASM_ARG = (Int16)((p + 1) % 32768);
             }
@@ -529,14 +572,14 @@ namespace Emulator
                     case 27: return "NOP";
                     case 28: return "CNS";
                     case 29: return "TOI";
-                    case 30: return "LOB";
+                    case 30: return String.Format ("LOB  '{0}", Octal(CPU[addr + 1],6));
                     case 31: return "OVS";
                     case 32: return "TBP";
                     case 33: return "TPB";
                     case 34: return "TBV";
                     case 35: return "TVB";
-                    case 36: return String.Format("STX{0}", I); // should show M flag somehow
-                    case 37: return String.Format("LIX{0}", I); // should show M flag somehow
+                    case 36: return String.Format("STX{0} '{1}", I, Octal(CPU[addr + 1], 6)); // should show M flag somehow
+                    case 37: return String.Format("LIX{0} '{1}", I, Octal(CPU[addr + 1], 6)); // should show M flag somehow
                     case 38: return "XPX";
                     case 39: return "XPB";
                     case 40: return "SXB";
@@ -552,14 +595,14 @@ namespace Emulator
                 Int16 unit = (Int16)(word & 0x3f);
                 switch (aug)
                 {
-                    case 0: return String.Format("CEU{0} '{1},0", I, Octal(unit));
-                    case 1: return String.Format("CEU{0} '{1},1", I, Octal(unit)); // TODO: MAP mode
-                    case 2: return String.Format("TEU{0} '{1}", I, Octal(unit));
+                    case 0: return String.Format("CEU{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6));
+                    case 1: return String.Format("CEU{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6)); // TODO: MAP mode
+                    case 2: return String.Format("TEU{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6));
                     case 4: return String.Format("SNS  {0:D2}", unit & 15);
                     case 6: switch (unit)
                         {
-                            case 0: return String.Format("PIE{0}", I);
-                            case 1: return String.Format("PID{0}", I);
+                            case 0: return String.Format("PIE{0} '{1}", I, Octal(CPU[addr + 1], 6));
+                            case 1: return String.Format("PID{0} '{1}", I, Octal(CPU[addr + 1], 6));
                             default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                         }
                 }
@@ -574,10 +617,10 @@ namespace Emulator
                     case 1: return String.Format("AOP  '{0},1", Octal(unit));
                     case 2: return String.Format("AIP  '{0},0,{1}", Octal(unit), (X == null) ? '0' : '1');
                     case 3: return String.Format("AIP  '{0},1,{1}", Octal(unit), (X == null) ? '0' : '1');
-                    case 4: return String.Format("MOP{0} '{1},0", I, Octal(unit));
-                    case 5: return String.Format("MOP{0} '{1},1", I, Octal(unit)); // TODO: MAP mode
-                    case 6: return String.Format("MIP{0} '{1},0", I, Octal(unit));
-                    case 7: return String.Format("MIP{0} '{1},1", I, Octal(unit)); // TODO: MAP mode
+                    case 4: return String.Format("MOP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6));
+                    case 5: return String.Format("MOP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6)); // TODO: MAP mode
+                    case 6: return String.Format("MIP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr + 1],6));
+                    case 7: return String.Format("MIP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6)); // TODO: MAP mode
                     default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                 }
             }

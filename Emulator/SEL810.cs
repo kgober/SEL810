@@ -28,7 +28,7 @@ namespace Emulator
 {
     class SEL810
     {
-        private const Int32 CORE_SIZE = 32768;
+        public const Int32 CORE_SIZE = 32768;
 
         private Object mLock = new Object();
         private Thread mCPUThread;
@@ -450,13 +450,16 @@ namespace Emulator
                         IO_Write(unit, mA, true);
                         break;
                     case 2: // AIP - accumulator input from peripheral (skip mode)
-                        if (r) mA = 0;
-                        if (IO_Read(unit, out r16, false)) ++mPC;
-                        mA += r16;
+                        if (IO_Read(unit, out r16, false))
+                        {
+                            if (!r) mA = 0;
+                            mA += r16;
+                            ++mPC;
+                        }
                         break;
                     case 3: // AIP - accumulator input from peripheral (wait mode)
-                        if (r) mA = 0;
                         IO_Read(unit, out r16, true);
+                        if (!r) mA = 0;
                         mA += r16;
                         break;
                     case 4: // MOP - memory output to peripheral (skip mode)
