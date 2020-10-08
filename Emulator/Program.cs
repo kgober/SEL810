@@ -70,7 +70,7 @@ namespace Emulator
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
                     Console.Out.WriteLine("t[oggle] [val] - display or set sense switches");
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
-                    Console.Out.WriteLine("= [addr] val - write 'val' to 'addr'");
+                    Console.Out.WriteLine("= [addr] [val] - write 'val' to 'addr' (Enter to continue)");
                     Console.Out.WriteLine(". [count] addr - set a read breakpoint at 'addr'");
                     Console.Out.WriteLine("! [count] addr - set a write breakpoint at 'addr'");
                 }
@@ -291,13 +291,18 @@ namespace Emulator
                 arg = arg.Substring(p + 1);
                 p = word;
             }
-            if (!ParseWord(arg, out word))
+            if (arg.Length == 0)
+            {
+                word = CPU[p];
+            }
+            else if (!ParseWord(arg, out word))
             {
                 Console.Out.WriteLine("Unrecognized: {0}", arg);
                 Console.Out.Write("810A>");
                 return;
             }
             CPU[p] = word;
+            AUTO_CMD = "=";
             WRITE_ADDR = (Int16)((p + 1) % 32768);
             Console.Out.Write("{0}={1:x4}/{2}  {3}:{4:x4}/{5}  >", Octal((Int16)(p), 5), word, Octal(word, 6), Octal(WRITE_ADDR, 5), CPU[WRITE_ADDR], Octal(CPU[WRITE_ADDR], 6));
         }
