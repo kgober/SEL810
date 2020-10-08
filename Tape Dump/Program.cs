@@ -826,6 +826,7 @@ namespace TapeDump
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 break;
                             case 1: // CALL
+                                CORE[PC] = 0xA000; // SPB opcode only. MIB and addr bits to be filled in when symbol is resolved
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3}        CALL {4}", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5), name);
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
                                 Console.Out.WriteLine("{0:D3}-{1:D2}  {2}", blockNum, ++i, OctalString(block[i], 8));
@@ -850,6 +851,7 @@ namespace TapeDump
                         if ((loadop & 0x010000) != 0)
                         {
                             // literal referencing instructions
+                            // find a place in memory to store the literal value, then write the instruction with needed address
                             Console.Out.WriteLine("{0:D3}-{1:D2}  {2}  {3} ~", blockNum, i, OctalString(loadop, 8), OctalString(PC++, 5));
                             break;
                         }
@@ -953,7 +955,7 @@ namespace TapeDump
                     {
                         case 0: return String.Format("CEU{0} '{1},0", I, OctalString(aug));
                         case 1: return String.Format("CEU{0} '{1},1", I, OctalString(aug)); // TODO: MAP mode
-                        case 2: return String.Format("TEU{0} '{0}", I, OctalString(aug));
+                        case 2: return String.Format("TEU{0} '{1}", I, OctalString(aug));
                         case 4: return String.Format("SNS  {0:D2}", word & 0x000f);
                         case 6: switch (aug)
                             {
