@@ -70,6 +70,7 @@ namespace Emulator
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
                     Console.Out.WriteLine("t[oggle] [val] - display or set sense switches");
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
+                    Console.Out.WriteLine("= [addr] val - write 'val' to 'addr'");
                     Console.Out.WriteLine(". [count] addr - set a read breakpoint at 'addr'");
                     Console.Out.WriteLine("! [count] addr - set a write breakpoint at 'addr'");
                 }
@@ -184,6 +185,11 @@ namespace Emulator
                     Disassemble(arg);
                     continue;
                 }
+                else if (cmd[0] == '=') // write word
+                {
+                    Write(arg);
+                    continue;
+                }
                 else if (cmd[0] == '.') // read breakpoint
                 {
                     Int16 ct;
@@ -251,6 +257,49 @@ namespace Emulator
                 AUTO_CMD = "dump";
                 DUMP_ARG = (Int16)((p + 8) % 32768);
             }
+            else
+            {
+                Console.Out.Write("810A>");
+            }
+        }
+
+        static Int16 WRITE_ADDR = -1;
+        static public void Write(String arg)
+        {
+            Int32 p;
+            Int16 word;
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if ((p = arg.IndexOf(' ')) == -1)
+            {
+                p = WRITE_ADDR;
+                if (p == -1) p = 0;
+            }
+            else
+            {
+                if (!ParseWord(arg.Substring(0, p), out word))
+                {
+                    Console.Out.WriteLine("Unrecognized: {0}", arg.Substring(0, p));
+                    Console.Out.Write("810A>");
+                    return;
+                }
+                if (word < 0)
+                {
+                    Console.Out.WriteLine("Invalid: {0}", arg.Substring(0, p));
+                    Console.Out.Write("810A>");
+                    return;
+                }
+                arg = arg.Substring(p + 1);
+                p = word;
+            }
+            if (!ParseWord(arg, out word))
+            {
+                Console.Out.WriteLine("Unrecognized: {0}", arg);
+                Console.Out.Write("810A>");
+                return;
+            }
+            CPU[p] = word;
+            WRITE_ADDR = (Int16)((p + 1) % 32768);
+            Console.Out.Write("{0}={1:x4}/{2}  {3}:{4:x4}/{5}  >", Octal((Int16)(p), 5), word, Octal(word, 6), Octal(WRITE_ADDR, 5), CPU[WRITE_ADDR], Octal(CPU[WRITE_ADDR], 6));
         }
 
         static Int16 DISASM_ARG = -1;
@@ -261,14 +310,14 @@ namespace Emulator
             else if (!ParseWord(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
             if (p != -1)
             {
-                Console.Out.Write("{0}  {1}  >", Octal(p, 5), Op(p, CPU[p], 16));
+                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Op(p, CPU[p], 16));
                 AUTO_CMD = "unassemble";
                 DISASM_ARG = (Int16)((p + 1) % 32768);
             }
-        }
-
-        static public void Load(String arg)
-        {
+            else
+            {
+                Console.Out.Write("810A>");
+            }
         }
 
         static Int32 STEP_ARG = -1;
@@ -284,8 +333,15 @@ namespace Emulator
                 Console.Out.Write("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}  ", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
                 Console.Out.Write("PC:{0:X4}/{1}  {2}  {3}  >", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR, 16));
             }
-            AUTO_CMD = "step";
-            STEP_ARG = p;
+            if (p != -1)
+            {
+                AUTO_CMD = "step";
+                STEP_ARG = p;
+            }
+            else
+            {
+                Console.Out.Write("810A>");
+            }
         }
 
         static public Boolean ParseWord(String s, out Int16 result)
@@ -324,18 +380,15 @@ namespace Emulator
                 }
             }
             if (p == s.Length) return false;
-            Int16 n;
+            Int32 n;
             if ((n = RadixValue(s[p++], radix)) == -1) return false;
-            result = n;
-            result *= sign;
+            result = (Int16)(n * sign);
             while ((p < s.Length) && ((n = RadixValue(s[p], radix)) != -1))
             {
-                if ((((result * radix) + n) > 32767) && (sign == 1)) break;
-                if ((((result * radix) + n) > 32768) && (sign == -1)) break;
-                result *= sign;
-                result *= radix;
-                result += n;
-                result *= sign;
+                if ((((result * radix) + n) > 65535) && (sign == 1)) break;
+                if ((((result * radix) - n) < -32768) && (sign == -1)) break;
+                n = ((sign * result * radix) + n) * sign;
+                result = (Int16)(n & 0xffff);
                 p++;
             }
             return (p == s.Length);
