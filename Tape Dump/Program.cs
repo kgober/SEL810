@@ -190,6 +190,13 @@ namespace TapeDump
 
         static public void DumpRaw(Byte[] tape, Int32 startAt)
         {
+            if (DUMPFILE != null)
+            {
+                for (Int32 i = startAt; i < tape.Length; i++) DUMPFILE.WriteByte(tape[i]);
+                DUMPFILE.Close();
+                DUMPFILE = null;
+            }
+
             Int32 p = startAt;
             while (p < tape.Length)
             {
