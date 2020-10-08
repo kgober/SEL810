@@ -42,10 +42,14 @@ namespace Emulator
         private Int16[] mBPR = new Int16[CORE_SIZE];
         private Int16[] mBPW = new Int16[CORE_SIZE];
 
+        private IO[] mIO = new IO[64];
+
         public SEL810()
         {
             mCPUThread = new Thread(new ThreadStart(CPUThread));
             mCPUThread.Start();
+
+            mIO[1] = new Teletype();
         }
 
         public SEL810(String imageFile) : this()
@@ -87,6 +91,12 @@ namespace Emulator
         {
             get { return mIR; } // TODO: make thread-safe
             set { mIR = value; } // TODO: make thread-safe
+        }
+
+        public Int16 SR
+        {
+            get { return mSR; } // TODO: make thread-safe
+            set { mSR = value; } // TODO: make thread-safe
         }
 
         public Int16 this[Int32 index]
@@ -602,23 +612,39 @@ namespace Emulator
 
         private Boolean IO_Command(Int32 unit, Int16 command, Boolean wait)
         {
-            return false;
+            IO dev = mIO[unit];
+            if (dev == null) return false; // TODO: what if wait=true?
+            if (!dev.CommandReady) return false;
+            dev.Command(command);
+            return true;
         }
 
         private Boolean IO_Test(Int32 unit, Int16 command)
         {
-            return false;
+            IO dev = mIO[unit];
+            if (dev == null) return false;
+            return dev.Test(command);
         }
 
         private Boolean IO_Write(Int32 unit, Int16 word, Boolean wait)
         {
-            return false;
+            IO dev = mIO[unit];
+            if (dev == null) return false; // TODO: what if wait=true?
+            if ((!wait) && (!dev.WriteReady)) return false;
+            while (!dev.WriteReady) Thread.Sleep(50);
+            dev.Write(word);
+            return true;
         }
 
         private Boolean IO_Read(Int32 unit, out Int16 word, Boolean wait)
         {
             word = 0;
-            return false;
+            IO dev = mIO[unit];
+            if (dev == null) return false; // TODO: what if wait=true?
+            if ((!wait) && (!dev.ReadReady)) return false;
+            while (!dev.ReadReady) Thread.Sleep(50);
+            word = dev.Read();
+            return true;
         }
     }
 }

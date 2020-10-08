@@ -68,6 +68,7 @@ namespace Emulator
                     Console.Out.WriteLine("q[uit] - exit emulator");
                     Console.Out.WriteLine("r[egisters] - display registers");
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
+                    Console.Out.WriteLine("t[oggle] [val] - display or set sense switches");
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
                     Console.Out.WriteLine(". [count] addr - set a read breakpoint at 'addr'");
                     Console.Out.WriteLine("! [count] addr - set a write breakpoint at 'addr'");
@@ -161,6 +162,22 @@ namespace Emulator
                 {
                     Step(arg);
                     continue;
+                }
+                else if (cmd[0] == 't') // toggle
+                {
+                    if (arg.Length == 0)
+                    {
+                        Console.Out.WriteLine("SR:{0:X4}/{1}", CPU.SR, Octal(CPU.SR, 6));
+                    }
+                    else if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized: {0}", arg);
+                    }
+                    else
+                    {
+                        CPU.SR = word;
+                        Console.Out.WriteLine("SR:{0:X4}/{1}", CPU.SR, Octal(CPU.SR, 6));
+                    }
                 }
                 else if (cmd[0] == 'u') // unassemble
                 {
