@@ -99,6 +99,12 @@ namespace Emulator
             set { mSR = value; } // TODO: make thread-safe
         }
 
+        public Int32 ConsoleMode
+        {
+            get { return (mIO[1] as Teletype).Mode; } // TODO: make thread-safe
+            set { (mIO[1] as Teletype).Mode = value; } // TODO: make thread-safe
+        }
+
         public Int16 this[Int32 index]
         {
             get { return mCore[index]; } // TODO: make thread-safe
@@ -126,6 +132,18 @@ namespace Emulator
             }
         }
 
+        public void SetReader(String inputFile)
+        {
+            Teletype cons = mIO[1] as Teletype;
+            cons.SetReader(inputFile);
+        }
+
+        public void SetPunch(String outputFile)
+        {
+            Teletype cons = mIO[1] as Teletype;
+            cons.SetPunch(outputFile);
+        }
+
         public void Start()
         {
             mHalt = false;
@@ -144,6 +162,7 @@ namespace Emulator
 
         public void Exit()
         {
+            for (Int32 i = 0; i < mIO.Length; i++) if (mIO[i] != null) mIO[i].Exit();
             mCPUThread.Abort();
             mCPUThread.Join();
         }
@@ -642,7 +661,7 @@ namespace Emulator
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
             if ((!wait) && (!dev.ReadReady)) return false;
-            while (!dev.ReadReady) Thread.Sleep(50);
+            while (!dev.ReadReady) Thread.Sleep(10);
             word = dev.Read();
             return true;
         }

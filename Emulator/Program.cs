@@ -21,6 +21,7 @@
 
 
 using System;
+using System.IO;
 
 namespace Emulator
 {
@@ -61,10 +62,13 @@ namespace Emulator
                     Console.Out.WriteLine("a [val] - display or set A accumulator");
                     Console.Out.WriteLine("b [val] - display or set B accumulator");
                     Console.Out.WriteLine("pc [val] - display or set Program Counter");
+                    Console.Out.WriteLine("c[onsole] [mode] - display or set console mode");
                     Console.Out.WriteLine("d[ump] [addr] - dump 8 words at 'addr' (Enter to continue)");
                     Console.Out.WriteLine("g[o] - start CPU");
                     Console.Out.WriteLine("h[alt] - halt CPU");
-                    Console.Out.WriteLine("l[oad] [addr] filename - load memory from filename at 'addr' (default 0)");
+                    Console.Out.WriteLine("i[input] filename - read paper tape input from 'filename'");
+                    Console.Out.WriteLine("l[oad] [addr] filename - load memory from 'filename' at 'addr' (default 0)");
+                    Console.Out.WriteLine("o[utput] filename - write paper tape output to 'filename'");
                     Console.Out.WriteLine("q[uit] - exit emulator");
                     Console.Out.WriteLine("r[egisters] - display registers");
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
@@ -122,6 +126,36 @@ namespace Emulator
                         Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
                     }
                 }
+                else if (cmd[0] == 'c') // console
+                {
+                    if (arg.Length == 0)
+                    {
+                        Console.Out.Write("Console Mode: ");
+                        switch (CPU.ConsoleMode)
+                        {
+                            case 1: Console.Out.WriteLine("1=printer"); break;
+                            case 2: Console.Out.WriteLine("2=punch"); break;
+                            case 3: Console.Out.WriteLine("3=both (printer and punch)"); break;
+                            default: Console.Out.WriteLine("? unknown ({0:D0})", CPU.ConsoleMode); break;
+                        }
+                    }
+                    else if ((arg == "1") || (arg == "printer"))
+                    {
+                        CPU.ConsoleMode = 1;
+                    }
+                    else if ((arg == "2") || (arg == "punch"))
+                    {
+                        CPU.ConsoleMode = 2;
+                    }
+                    else if ((arg == "3") || (arg == "both"))
+                    {
+                        CPU.ConsoleMode = 3;
+                    }
+                    else
+                    {
+                        Console.Out.WriteLine("Unrecognized: {0}", arg);
+                    }
+                }
                 else if (cmd[0] == 'd') // dump
                 {
                     Dump(arg);
@@ -135,6 +169,11 @@ namespace Emulator
                 {
                     CPU.Stop();
                 }
+                else if (cmd[0] == 'i') // input
+                {
+                    if (!File.Exists(arg)) Console.Out.WriteLine("File not found: {0}", arg);
+                    else CPU.SetReader(arg);
+                }
                 else if (cmd[0] == 'l') // load
                 {
                     while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
@@ -147,7 +186,12 @@ namespace Emulator
                         if (!ParseWord(arg.Substring(0, p), out word)) word = 0;
                         else arg = arg.Substring(p + 1);
                     }
-                    CPU.Load(word, arg);
+                    if (!File.Exists(arg)) Console.Out.WriteLine("File not found: {0}", arg);
+                    else CPU.Load(word, arg);
+                }
+                else if (cmd[0] == 'o') // output
+                {
+                    CPU.SetPunch(arg);
                 }
                 else if (cmd[0] == 'q') // quit
                 {
