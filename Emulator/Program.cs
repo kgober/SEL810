@@ -62,14 +62,15 @@ namespace Emulator
                     Console.Out.WriteLine("? - display this text");
                     Console.Out.WriteLine("a [val] - display or set A accumulator");
                     Console.Out.WriteLine("b [val] - display or set B accumulator");
-                    Console.Out.WriteLine("pc [val] - display or set Program Counter");
                     Console.Out.WriteLine("c[onsole] [mode] - display or set console mode");
                     Console.Out.WriteLine("d[ump] [addr] - dump 8 words at 'addr' (Enter to continue)");
                     Console.Out.WriteLine("g[o] - start CPU");
                     Console.Out.WriteLine("h[alt] - halt CPU");
                     Console.Out.WriteLine("i[input] filename - read paper tape input from 'filename'");
                     Console.Out.WriteLine("l[oad] [addr] filename - load memory from 'filename' at 'addr' (default 0)");
+                    Console.Out.WriteLine("mc - master clear (clears all registers)");
                     Console.Out.WriteLine("o[utput] filename - write paper tape output to 'filename'");
+                    Console.Out.WriteLine("pc [val] - display or set Program Counter");
                     Console.Out.WriteLine("q[uit] [filename] - exit emulator, optionally saving state to 'filename'");
                     Console.Out.WriteLine("r[egisters] - display registers");
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
@@ -109,22 +110,6 @@ namespace Emulator
                     {
                         CPU.B = word;
                         Console.Out.WriteLine("B:{0:X4}/{1}", CPU.B, Octal(CPU.B, 6));
-                    }
-                }
-                else if (cmd == "pc")
-                {
-                    if (arg.Length == 0)
-                    {
-                        Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
-                    }
-                    else if (!ParseWord(arg, out word))
-                    {
-                        Console.Out.WriteLine("Unrecognized: {0}", arg);
-                    }
-                    else
-                    {
-                        CPU.PC = word;
-                        Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
                     }
                 }
                 else if (cmd[0] == 'c') // console
@@ -190,9 +175,31 @@ namespace Emulator
                     if (!File.Exists(arg)) Console.Out.WriteLine("File not found: {0}", arg);
                     else CPU.Load(word, arg);
                 }
+                else if (cmd == "mc")
+                {
+                    CPU.PC = CPU.IR = CPU.A = CPU.B = CPU.T = CPU.SR = 0;
+                    Console.Out.WriteLine("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
+                    Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                }
                 else if (cmd[0] == 'o') // output
                 {
                     CPU.SetPunch(arg);
+                }
+                else if (cmd == "pc")
+                {
+                    if (arg.Length == 0)
+                    {
+                        Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                    }
+                    else if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized: {0}", arg);
+                    }
+                    else
+                    {
+                        CPU.PC = word;
+                        Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                    }
                 }
                 else if (cmd[0] == 'q') // quit
                 {

@@ -608,7 +608,7 @@ namespace Emulator
 
         private void SetHalt()
         {
-            if (!mHalt) Console.Out.WriteLine("HALTED");
+            if (!mHalt) Console.Out.Write("[HALT]");
             mHalt = true;
         }
 
