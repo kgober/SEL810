@@ -71,6 +71,12 @@ namespace Emulator
             set { mB = value; } // TODO: make thread-safe
         }
 
+        public Int16 T
+        {
+            get { return mT; } // TODO: make thread-safe
+            set { mT = value; } // TOOD: make thread-safe
+        }
+
         public Int16 PC
         {
             get { return mPC; } // TODO: make thread-safe
@@ -263,8 +269,8 @@ namespace Emulator
                         mA ^= -32768;
                         break;
                     case 17: // SAS - skip on accumulator sign
+                        if (mA > 0) ++mPC;
                         if (mA >= 0) ++mPC;
-                        if (mA == 0) ++mPC;
                         break;
                     case 18: // SAZ - skip if accumulator zero
                         if (mA == 0) ++mPC;
@@ -281,7 +287,7 @@ namespace Emulator
                         break;
                     case 22: // IBS - increment B and skip
                         mB++;
-                        if (mB == 0) ++mPC;
+                        if (mB >= 0) ++mPC;
                         break;
                     case 23: // ABA - and B and A accumulators
                         mA = (Int16)(mA & mB);
@@ -399,7 +405,7 @@ namespace Emulator
                         break;
                 }
             }
-            else if (op == 13)
+            else if (op == 15)
             {
                 Int32 aug = (mIR >> 6) & 7;
                 Int32 unit = mIR & 0x3f;
@@ -483,7 +489,7 @@ namespace Emulator
                         break;
                     case 5: // AMA - add memory to A
                         mT = Read(ea);
-                        r16 = (Int16)(mA + mT);
+                        r16 = (Int16)(mA + mT + ((mCF) ? 1 : 0));
                         if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
                         mA = r16;
                         break;
@@ -521,8 +527,8 @@ namespace Emulator
                         break;
                     case 13: // CMA - compare memory and accumulator
                         mT = Read(ea);
+                        if (mA > mT) ++mPC;
                         if (mA >= mT) ++mPC;
-                        if (mA == mT) ++mPC;
                         break;
                     case 14: // AMB - add memory to B
                         mT = Read(ea);

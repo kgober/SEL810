@@ -154,7 +154,7 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'r') // registers
                 {
-                    Console.Out.WriteLine("A:{0:X4}/{1}  B:{2:X4}/{3}  ", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6));
+                    Console.Out.WriteLine("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
                     Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
                 }
                 else if (cmd[0] == 's') // step
@@ -264,7 +264,7 @@ namespace Emulator
             for (Int32 i = 0; (i < p) && (CPU.IsHalted); i++)
             {
                 CPU.Step();
-                Console.Out.Write("A:{0:X4}/{1}  B:{2:X4}/{3}  ", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6));
+                Console.Out.Write("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}  ", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
                 Console.Out.Write("PC:{0:X4}/{1}  {2}  {3}  >", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR, 16));
             }
             AUTO_CMD = "step";
