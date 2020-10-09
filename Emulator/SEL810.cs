@@ -113,6 +113,13 @@ namespace Emulator
             set { mCore[index] = value; } // TODO: make thread-safe
         }
 
+        public void MasterClear()
+        {
+            mT = mB = mA = mIR = mPC = 0;
+            ClearOVF();
+            ClearCF();
+        }
+
         public void Load(Int32 loadAddress, String imageFile)
         {
             Load(loadAddress, File.ReadAllBytes(imageFile));
