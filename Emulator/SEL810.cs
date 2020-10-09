@@ -626,11 +626,13 @@ namespace Emulator
 
         private void SetOVF()
         {
+            if (!mOVF) Console.Out.Write("[+OVF]");
             mOVF = true;
         }
 
         private void ClearOVF()
         {
+            if (mOVF) Console.Out.Write("[-OVF]");
             mOVF = false;
         }
 
@@ -648,7 +650,10 @@ namespace Emulator
         {
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
-            if (!dev.CommandReady) return false;
+            if ((!wait) && (!dev.CommandReady)) return false;
+            Console.Out.Write("[+IOH]");
+            while (!dev.CommandReady) Thread.Sleep(50);
+            Console.Out.Write("[-IOH]");
             dev.Command(command);
             return true;
         }
@@ -665,7 +670,9 @@ namespace Emulator
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
             if ((!wait) && (!dev.WriteReady)) return false;
+            Console.Out.Write("[+IOH]");
             while (!dev.WriteReady) Thread.Sleep(50);
+            Console.Out.Write("[-IOH]");
             dev.Write(word);
             return true;
         }
@@ -676,7 +683,9 @@ namespace Emulator
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
             if ((!wait) && (!dev.ReadReady)) return false;
+            Console.Out.Write("[+IOH]");
             while (!dev.ReadReady) Thread.Sleep(10);
+            Console.Out.Write("[-IOH]");
             word = dev.Read();
             return true;
         }
