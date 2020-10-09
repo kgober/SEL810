@@ -635,13 +635,13 @@ namespace Emulator
 
         private void SetOVF()
         {
-            if (!mOVF) Console.Out.Write("[+OVF]");
+            if (!mOVF && Program.VERBOSE) Console.Out.Write("[+OVF]");
             mOVF = true;
         }
 
         private void ClearOVF()
         {
-            if (mOVF) Console.Out.Write("[-OVF]");
+            if (mOVF && Program.VERBOSE) Console.Out.Write("[-OVF]");
             mOVF = false;
         }
 
@@ -668,9 +668,9 @@ namespace Emulator
             }
             if (!dev.CommandReady)
             {
-                Console.Out.Write("[+IOH]");
+                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
                 while (!dev.CommandReady) Thread.Sleep(50);
-                Console.Out.Write("[-IOH]");
+                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
             }
             dev.Command(command);
             return true;
@@ -696,9 +696,9 @@ namespace Emulator
             }
             if (!dev.WriteReady)
             {
-                Console.Out.Write("[+IOH]");
+                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
                 while (!dev.WriteReady) Thread.Sleep(20);
-                Console.Out.Write("[-IOH]");
+                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
             }
             dev.Write(word);
             return true;
@@ -718,9 +718,9 @@ namespace Emulator
             }
             if (!dev.ReadReady)
             {
-                Console.Out.Write("[+IOH]");
+                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
                 while (!dev.ReadReady) Thread.Sleep(20);
-                Console.Out.Write("[-IOH]");
+                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
             }
             word = dev.Read();
             return true;

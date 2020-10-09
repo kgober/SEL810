@@ -27,6 +27,7 @@ namespace Emulator
 {
     class Program
     {
+        static public Boolean VERBOSE = false;
         static SEL810 CPU = new SEL810();
         static String AUTO_CMD = String.Empty;
 
@@ -77,6 +78,7 @@ namespace Emulator
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
                     Console.Out.WriteLine("t[oggle] [val] - display or set sense switches");
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
+                    Console.Out.WriteLine("v[erbose] - toggle verbose mode (shows OVF and IOH indicators)");
                     Console.Out.WriteLine("w[rite] addr len filename - write 'len' words at 'addr' to 'filename'");
                     Console.Out.WriteLine("= [addr] [val] - write 'val' to 'addr' (Enter to continue)");
                     Console.Out.WriteLine(". [addr [count]] - set a read breakpoint at 'addr'");
@@ -256,6 +258,10 @@ namespace Emulator
                 {
                     Disassemble(arg);
                     continue;
+                }
+                else if (cmd[0] == 'v') // verbose
+                {
+                    VERBOSE = !VERBOSE;
                 }
                 else if (cmd[0] == 'w') // write
                 {
