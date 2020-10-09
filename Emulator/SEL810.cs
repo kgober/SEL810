@@ -244,7 +244,7 @@ namespace Emulator
                         break;
                     case 2: // NEG - negate A
                         if (mA == -32768) SetOVF();
-                        mA = (Int16)(-mA);
+                        mA = (Int16)(-mA - ((mCF) ? 1 : 0));
                         break;
                     case 3: // CLA - clear A
                         mA = 0;
@@ -548,7 +548,7 @@ namespace Emulator
                         break;
                     case 6: // SMA - subtract memory from A
                         mT = Read(ea);
-                        r16 = (Int16)(mA - mT);
+                        r16 = (Int16)(mA - mT - ((mCF) ? 1 : 0));
                         if (((mA & 0x8000) != (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
                         mA = r16;
                         break;
