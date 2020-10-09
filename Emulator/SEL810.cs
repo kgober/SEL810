@@ -398,6 +398,8 @@ namespace Emulator
                     case 43: // TXA - transfer index register to A
                         mA = mX;
                         break;
+                    default: // TODO: what do undefined opcodes do?
+                        break;
                 }
             }
             else if (op == 11)

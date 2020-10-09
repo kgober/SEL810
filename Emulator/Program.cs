@@ -733,8 +733,8 @@ namespace Emulator
                 addr++;
                 switch (aug)
                 {
-                    case 0: return String.Format("CEU{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
-                    case 1: return String.Format("CEU{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
+                    case 0: return String.Format("CEU{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
+                    case 1: return String.Format("CEU{0} '{1},W '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
                     case 2: return String.Format("TEU{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
                     case 4: return String.Format("SNS  {0:D2}", unit & 15);
                     case 6: switch (unit)
@@ -752,14 +752,14 @@ namespace Emulator
                 addr++;
                 switch (aug)
                 {
-                    case 0: return String.Format("AOP  '{0},0", Octal(unit));
-                    case 1: return String.Format("AOP  '{0},1", Octal(unit));
-                    case 2: return String.Format("AIP  '{0},0,{1}", Octal(unit), (X == null) ? '0' : '1');
-                    case 3: return String.Format("AIP  '{0},1,{1}", Octal(unit), (X == null) ? '0' : '1');
-                    case 4: return String.Format("MOP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
-                    case 5: return String.Format("MOP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
-                    case 6: return String.Format("MIP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr++],6));
-                    case 7: return String.Format("MIP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
+                    case 0: return String.Format("AOP  '{0}", Octal(unit));
+                    case 1: return String.Format("AOP  '{0},W", Octal(unit));
+                    case 2: return String.Format("AIP  '{0}{1}", Octal(unit), (X == null) ? null : ",R");
+                    case 3: return String.Format("AIP  '{0},W{1}", Octal(unit), (X == null) ? null : ",R");
+                    case 4: return String.Format("MOP{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
+                    case 5: return String.Format("MOP{0} '{1},W '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
+                    case 6: return String.Format("MIP{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr++],6));
+                    case 7: return String.Format("MIP{0} '{1},W '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
                     default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                 }
             }
