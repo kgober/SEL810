@@ -167,9 +167,19 @@ namespace Emulator
             mCPUThread.Join();
         }
 
+        public Int16 GetBPR(Int16 addr)
+        {
+            return mBPR[addr];
+        }
+
         public void SetBPR(Int16 addr, Int16 count)
         {
             mBPR[addr] = count;
+        }
+
+        public Int16 GetBPW(Int16 addr)
+        {
+            return mBPW[addr];
         }
 
         public void SetBPW(Int16 addr, Int16 count)

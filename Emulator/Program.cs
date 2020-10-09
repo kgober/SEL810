@@ -76,9 +76,10 @@ namespace Emulator
                     Console.Out.WriteLine("s[tep] - single step CPU (Enter to continue)");
                     Console.Out.WriteLine("t[oggle] [val] - display or set sense switches");
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
+                    Console.Out.WriteLine("w[rite] addr len filename - write 'len' words at 'addr' to 'filename'");
                     Console.Out.WriteLine("= [addr] [val] - write 'val' to 'addr' (Enter to continue)");
-                    Console.Out.WriteLine(". [count] addr - set a read breakpoint at 'addr'");
-                    Console.Out.WriteLine("! [count] addr - set a write breakpoint at 'addr'");
+                    Console.Out.WriteLine(". [addr [count]] - set a read breakpoint at 'addr'");
+                    Console.Out.WriteLine("! [addr [count]] - set a write breakpoint at 'addr'");
                 }
                 else if (cmd == "a")
                 {
@@ -239,6 +240,10 @@ namespace Emulator
                     Disassemble(arg);
                     continue;
                 }
+                else if (cmd[0] == 'w') // write
+                {
+                    Save(arg);
+                }
                 else if (cmd[0] == '=') // write word
                 {
                     Write(arg);
@@ -246,49 +251,11 @@ namespace Emulator
                 }
                 else if (cmd[0] == '.') // read breakpoint
                 {
-                    Int16 ct;
-                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-                    if ((p = arg.IndexOf(' ')) == -1)
-                    {
-                        ct = -1;
-                    }
-                    else
-                    {
-                        if (!ParseWord(arg.Substring(0, p), out ct))
-                        {
-                            Console.Out.WriteLine("Unrecognized: {0}", arg.Substring(0, p));
-                            ct = 0;
-                        }
-                        else arg = arg.Substring(p + 1);
-                    }
-                    if (!ParseWord(arg, out word))
-                    {
-                        Console.Out.WriteLine("Unrecognized: {0}", arg);
-                    }
-                    CPU.SetBPR(word, ct);
+                    ReadBP(arg);
                 }
                 else if (cmd[0] == '!') // write breakpoint
                 {
-                    Int16 ct;
-                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-                    if ((p = arg.IndexOf(' ')) == -1)
-                    {
-                        ct = -1;
-                    }
-                    else
-                    {
-                        if (!ParseWord(arg.Substring(0, p), out ct))
-                        {
-                            Console.Out.WriteLine("Unrecognized: {0}", arg.Substring(0, p));
-                            ct = 0;
-                        }
-                        else arg = arg.Substring(p + 1);
-                    }
-                    if (!ParseWord(arg, out word))
-                    {
-                        Console.Out.WriteLine("Unrecognized: {0}", arg);
-                    }
-                    CPU.SetBPW(word, ct);
+                    WriteBP(arg);
                 }
                 Console.Out.Write("810A>");
             }
@@ -332,6 +299,156 @@ namespace Emulator
                 f.Write(buf, 0, 2);
             }
             f.Close();
+        }
+
+        static public void Save(String arg)
+        {
+            Int32 p;
+            Int16 addr, len;
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if ((p = arg.IndexOf(' ')) == -1)
+            {
+                Console.Out.WriteLine("Must specify address, word count, and filename");
+                return;
+            }
+            if (!ParseWord(arg.Substring(0, p), out addr))
+            {
+                Console.Out.WriteLine("Unrecognized address: {0}", arg.Substring(0, p));
+                return;
+            }
+            if (addr < 0)
+            {
+                Console.Out.WriteLine("Invalid address: {0}", arg.Substring(0, p));
+                return;
+            }
+            arg = arg.Substring(p + 1);
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if ((p = arg.IndexOf(' ')) == -1)
+            {
+                Console.Out.WriteLine("Must specify address, word count, and filename");
+                return;
+            }
+            if (!ParseWord(arg.Substring(0, p), out len))
+            {
+                Console.Out.WriteLine("Unrecognized word count: {0}", arg.Substring(0, p));
+                return;
+            }
+            if (len < 0)
+            {
+                Console.Out.WriteLine("Invalid word count: {0}", arg.Substring(0, p));
+                return;
+            }
+            arg = arg.Substring(p + 1);
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if (arg.Length == 0)
+            {
+                Console.Out.WriteLine("Must specify address, word count, and filename");
+                return;
+            }
+            FileStream f = new FileStream(arg, FileMode.Create, FileAccess.Write);
+            for (Int32 i = 0; i < len; i++)
+            {
+                Int16 word = CPU[(addr + i) % 32768];
+                f.WriteByte((Byte)((word >> 8) & 0xff));
+                f.WriteByte((Byte)(word & 0xff));
+            }
+            f.Close();
+        }
+
+        static public void ReadBP(String arg)
+        {
+            Int32 p;
+            Int16 addr, ct;
+            if (arg.Length == 0)
+            {
+                Int16 n = 0;
+                for (Int32 i = 0; i < SEL810.CORE_SIZE; i++)
+                {
+                    if ((ct = CPU.GetBPR((Int16)(i))) == 0) continue;
+                    Console.Out.WriteLine("Read BP: {0:x4}/{1} {2}", i, Octal((Int16)(i), 5), (ct < 0) ? "*" : ct.ToString());
+                    n++;
+                }
+                if (n == 0) Console.Out.WriteLine("Read BP: none set");
+                return;
+            }
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if ((p = arg.IndexOf(' ')) == -1)
+            {
+                ct = -1;
+                if (!ParseWord(arg, out addr))
+                {
+                    Console.Out.WriteLine("Unrecognized addr: {0}", arg);
+                    return;
+                }
+            }
+            else
+            {
+                if (!ParseWord(arg.Substring(0, p), out addr))
+                {
+                    Console.Out.WriteLine("Unrecognized addr: {0}", arg.Substring(0, p));
+                    return;
+                }
+                arg = arg.Substring(p + 1);
+                while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                if (arg.Length == 0)
+                {
+                    ct = -1;
+                }
+                else if (!ParseWord(arg, out ct))
+                {
+                    Console.Out.WriteLine("Unrecognized word count: {0}", arg.Substring(0, p));
+                    return;
+                }
+            }
+            CPU.SetBPR(addr, ct);
+        }
+
+        static public void WriteBP(String arg)
+        {
+            Int32 p;
+            Int16 addr, ct;
+            if (arg.Length == 0)
+            {
+                Int16 n = 0;
+                for (Int32 i = 0; i < SEL810.CORE_SIZE; i++)
+                {
+                    if ((ct = CPU.GetBPW((Int16)(i))) == 0) continue;
+                    Console.Out.WriteLine("Write BP: {0:x4}/{1} {2}", i, Octal((Int16)(i), 5), (ct < 0) ? "*" : ct.ToString());
+                    n++;
+                }
+                if (n == 0) Console.Out.WriteLine("Write BP: none set");
+                return;
+            }
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if ((p = arg.IndexOf(' ')) == -1)
+            {
+                ct = -1;
+                if (!ParseWord(arg, out addr))
+                {
+                    Console.Out.WriteLine("Unrecognized addr: {0}", arg);
+                    return;
+                }
+            }
+            else
+            {
+                if (!ParseWord(arg.Substring(0, p), out addr))
+                {
+                    Console.Out.WriteLine("Unrecognized addr: {0}", arg.Substring(0, p));
+                    return;
+                }
+                arg = arg.Substring(p + 1);
+                while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                if (arg.Length == 0)
+                {
+                    ct = -1;
+                }
+                else if (!ParseWord(arg, out ct))
+                {
+                    Console.Out.WriteLine("Unrecognized word count: {0}", arg.Substring(0, p));
+                    return;
+                }
+            }
+            CPU.SetBPW(addr, ct);
         }
 
         static Int16 DUMP_ARG = -1;
