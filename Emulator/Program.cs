@@ -526,9 +526,9 @@ namespace Emulator
             else if (!ParseWord(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
             if (p != -1)
             {
-                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Op(p, CPU[p], 20));
+                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Op(ref p, CPU[p], 20));
                 AUTO_CMD = "unassemble";
-                DISASM_ARG = (Int16)((p + 1) % 32768);
+                DISASM_ARG = (Int16)(p % 32768);
             }
             else
             {
@@ -648,12 +648,24 @@ namespace Emulator
 
         static public String Op(Int16 addr, Int16 word, Int32 width)
         {
-            String s = Op(addr, word);
+            Int16 tmp = addr;
+            return Op(ref tmp, word, width);
+        }
+
+        static public String Op(ref Int16 addr, Int16 word, Int32 width)
+        {
+            String s = Op(ref addr, word);
             if (s.Length >= width) return s;
             return String.Concat(s, new String(' ', width - s.Length));
         }
 
         static public String Op(Int16 addr, Int16 word)
+        {
+            Int16 tmp = addr;
+            return Op(ref tmp, word);
+        }
+
+        static public String Op(ref Int16 addr, Int16 word)
         {
             // o ooo xim aaa aaa aaa - memory reference instruction
             // o ooo xis sss aaa aaa - augmented instruction
@@ -662,8 +674,9 @@ namespace Emulator
             Char I = ((word & 0x400) != 0) ? '*' : ' ';
             if (op == 0)
             {
-                Int32 aug = word & 63;
+                Int32 aug = (word & 0x3f) | ((word >> 4) & 0xc0);
                 Int32 sc = (word >> 6) & 15;
+                addr++;
                 switch (aug)
                 {
                     case 0: return "HLT";
@@ -696,14 +709,14 @@ namespace Emulator
                     case 27: return "NOP";
                     case 28: return "CNS";
                     case 29: return "TOI";
-                    case 30: return String.Format ("LOB  '{0}", Octal(CPU[addr + 1],6));
+                    case 30: return String.Format ("LOB  '{0}", Octal(CPU[addr++],6));
                     case 31: return "OVS";
                     case 32: return "TBP";
                     case 33: return "TPB";
                     case 34: return "TBV";
                     case 35: return "TVB";
-                    case 36: return String.Format("STX{0} '{1}", I, Octal(CPU[addr + 1], 6)); // should show M flag somehow
-                    case 37: return String.Format("LIX{0} '{1}", I, Octal(CPU[addr + 1], 6)); // should show M flag somehow
+                    case 36: return String.Format("STX{0} '{1}", I, Octal(CPU[addr++], 6)); // should show M flag somehow
+                    case 37: return String.Format("LIX{0} '{1}", I, Octal(CPU[addr++], 6)); // should show M flag somehow
                     case 38: return "XPX";
                     case 39: return "XPB";
                     case 40: return "SXB";
@@ -717,16 +730,17 @@ namespace Emulator
             {
                 Int32 aug = (word >> 6) & 7;
                 Int16 unit = (Int16)(word & 0x3f);
+                addr++;
                 switch (aug)
                 {
-                    case 0: return String.Format("CEU{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6));
-                    case 1: return String.Format("CEU{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6)); // TODO: MAP mode
-                    case 2: return String.Format("TEU{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6));
+                    case 0: return String.Format("CEU{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
+                    case 1: return String.Format("CEU{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
+                    case 2: return String.Format("TEU{0} '{1} '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
                     case 4: return String.Format("SNS  {0:D2}", unit & 15);
                     case 6: switch (unit)
                         {
-                            case 0: return String.Format("PIE{0} '{1}", I, Octal(CPU[addr + 1], 6));
-                            case 1: return String.Format("PID{0} '{1}", I, Octal(CPU[addr + 1], 6));
+                            case 0: return String.Format("PIE{0} '{1}", I, Octal(CPU[addr++], 6));
+                            case 1: return String.Format("PID{0} '{1}", I, Octal(CPU[addr++], 6));
                             default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                         }
                 }
@@ -735,16 +749,17 @@ namespace Emulator
             {
                 Int32 aug = (word >> 6) & 7;
                 Int16 unit = (Int16)(word & 0x3f);
+                addr++;
                 switch (aug)
                 {
                     case 0: return String.Format("AOP  '{0},0", Octal(unit));
                     case 1: return String.Format("AOP  '{0},1", Octal(unit));
                     case 2: return String.Format("AIP  '{0},0,{1}", Octal(unit), (X == null) ? '0' : '1');
                     case 3: return String.Format("AIP  '{0},1,{1}", Octal(unit), (X == null) ? '0' : '1');
-                    case 4: return String.Format("MOP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6));
-                    case 5: return String.Format("MOP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6)); // TODO: MAP mode
-                    case 6: return String.Format("MIP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr + 1],6));
-                    case 7: return String.Format("MIP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr + 1], 6)); // TODO: MAP mode
+                    case 4: return String.Format("MOP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr++], 6));
+                    case 5: return String.Format("MOP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
+                    case 6: return String.Format("MIP{0} '{1},0 '{2}", I, Octal(unit), Octal(CPU[addr++],6));
+                    case 7: return String.Format("MIP{0} '{1},1 '{2}", I, Octal(unit), Octal(CPU[addr++], 6)); // TODO: MAP mode
                     default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                 }
             }
@@ -752,6 +767,7 @@ namespace Emulator
             {
                 Int16 ea = (Int16)(word & 511);
                 if ((word & 0x200) != 0) ea |= (Int16)(addr & 0x7e00); // M flag
+                addr++;
                 switch (op)
                 {
                     case 1: return String.Format("LAA{0} '{1}{2}", I, Octal(ea, 5, '0'), X);
