@@ -30,6 +30,8 @@ namespace Emulator
     {
         public const Int32 CORE_SIZE = 32768;
 
+        private static TimeSpan sIndicatorLag = new TimeSpan(0, 0, 0, 0, 200);
+
         private Object mLock = new Object();
         private Thread mCPUThread;
 
@@ -651,9 +653,18 @@ namespace Emulator
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
             if ((!wait) && (!dev.CommandReady)) return false;
-            Console.Out.Write("[+IOH]");
-            while (!dev.CommandReady) Thread.Sleep(50);
-            Console.Out.Write("[-IOH]");
+            DateTime start = DateTime.Now;
+            while (!dev.CommandReady)
+            {
+                Thread.Sleep(10);
+                if ((DateTime.Now - start) > sIndicatorLag) break;
+            }
+            if (!dev.CommandReady)
+            {
+                Console.Out.Write("[+IOH]");
+                while (!dev.CommandReady) Thread.Sleep(50);
+                Console.Out.Write("[-IOH]");
+            }
             dev.Command(command);
             return true;
         }
@@ -670,9 +681,18 @@ namespace Emulator
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
             if ((!wait) && (!dev.WriteReady)) return false;
-            Console.Out.Write("[+IOH]");
-            while (!dev.WriteReady) Thread.Sleep(50);
-            Console.Out.Write("[-IOH]");
+            DateTime start = DateTime.Now;
+            while (!dev.WriteReady)
+            {
+                Thread.Sleep(10);
+                if ((DateTime.Now - start) > sIndicatorLag) break;
+            }
+            if (!dev.WriteReady)
+            {
+                Console.Out.Write("[+IOH]");
+                while (!dev.WriteReady) Thread.Sleep(20);
+                Console.Out.Write("[-IOH]");
+            }
             dev.Write(word);
             return true;
         }
@@ -683,9 +703,18 @@ namespace Emulator
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
             if ((!wait) && (!dev.ReadReady)) return false;
-            Console.Out.Write("[+IOH]");
-            while (!dev.ReadReady) Thread.Sleep(10);
-            Console.Out.Write("[-IOH]");
+            DateTime start = DateTime.Now;
+            while (!dev.ReadReady)
+            {
+                Thread.Sleep(10);
+                if ((DateTime.Now - start) > sIndicatorLag) break;
+            }
+            if (!dev.ReadReady)
+            {
+                Console.Out.Write("[+IOH]");
+                while (!dev.ReadReady) Thread.Sleep(20);
+                Console.Out.Write("[-IOH]");
+            }
             word = dev.Read();
             return true;
         }
