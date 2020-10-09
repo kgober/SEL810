@@ -175,7 +175,7 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'i') // input
                 {
-                    if (!File.Exists(arg)) Console.Out.WriteLine("File not found: {0}", arg);
+                    if ((arg.Length != 0) && (!File.Exists(arg))) Console.Out.WriteLine("File not found: {0}", arg);
                     else CPU.SetReader(arg);
                 }
                 else if (cmd[0] == 'l') // load

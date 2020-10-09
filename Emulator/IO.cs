@@ -153,6 +153,7 @@ namespace Emulator
         {
             if ((inputFile == null) || (inputFile.Length == 0))
             {
+                if (mReader != null) mReader.Close();
                 mReader = null;
                 Console.Out.Write("[-RDR]");
                 return;
@@ -166,6 +167,7 @@ namespace Emulator
         {
             if ((outputFile == null) || (outputFile.Length == 0))
             {
+                if (mPunch != null) mPunch.Close();
                 mPunch = null;
                 Console.Out.Write("[-PUN]");
                 return;
