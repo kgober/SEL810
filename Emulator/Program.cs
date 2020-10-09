@@ -178,7 +178,7 @@ namespace Emulator
                 }
                 else if (cmd == "mc")
                 {
-                    CPU.PC = CPU.IR = CPU.A = CPU.B = CPU.T = CPU.SR = 0;
+                    CPU.PC = CPU.IR = CPU.A = CPU.B = CPU.T = 0;
                     Console.Out.WriteLine("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
                     Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2}  {3}", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
                 }
