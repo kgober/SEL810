@@ -54,11 +54,6 @@ namespace Emulator
             mIO[1] = new Teletype();
         }
 
-        public SEL810(String imageFile) : this()
-        {
-            Load(0, imageFile);
-        }
-
         public Boolean IsHalted
         {
             get { return mHalt; } // TOOD: make thread-safe
@@ -178,22 +173,34 @@ namespace Emulator
 
         public Int16 GetBPR(Int16 addr)
         {
-            return mBPR[addr];
+            lock (mBPR)
+            {
+                return mBPR[addr];
+            }
         }
 
         public void SetBPR(Int16 addr, Int16 count)
         {
-            mBPR[addr] = count;
+            lock (mBPR)
+            {
+                mBPR[addr] = count;
+            }
         }
 
         public Int16 GetBPW(Int16 addr)
         {
-            return mBPW[addr];
+            lock (mBPW)
+            {
+                return mBPW[addr];
+            }
         }
 
         public void SetBPW(Int16 addr, Int16 count)
         {
-            mBPW[addr] = count;
+            lock (mBPW)
+            {
+                mBPW[addr] = count;
+            }
         }
 
         private void CPUThread()
@@ -612,17 +619,31 @@ namespace Emulator
 
         private Int16 Read(Int32 addr)
         {
-            Int16 n = mBPR[addr];
-            if ((n == 1) || (n == -1)) SetHalt();
-            if (n > 0) mBPR[addr]--;
+            lock (mBPR)
+            {
+                Int16 n = mBPR[addr];
+                if ((n == 1) || (n == -1))
+                {
+                    SetHalt();
+                    Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                }
+                if (n > 0) mBPR[addr]--;
+            }
             return mCore[addr];
         }
 
         private Int16 Write(Int32 addr, Int16 value)
         {
-            Int16 n = mBPW[addr];
-            if ((n == 1) || (n == -1)) SetHalt();
-            if (n > 0) mBPW[addr]--;
+            lock (mBPW)
+            {
+                Int16 n = mBPW[addr];
+                if ((n == 1) || (n == -1))
+                {
+                    SetHalt();
+                    Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                }
+                if (n > 0) mBPW[addr]--;
+            }
             mCore[addr] = value;
             return value;
         }
