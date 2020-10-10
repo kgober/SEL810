@@ -111,6 +111,7 @@ namespace Emulator
         public void MasterClear()
         {
             mT = mB = mA = mIR = mPC = 0;
+            mVBR = 0; // TODO: verify whether Master Clear actually clears this
             ClearOVF();
             ClearCF();
         }
@@ -379,7 +380,7 @@ namespace Emulator
                         mB = mPPR;
                         break;
                     case 34: // TBV - transfer B to variable base register
-                        mVBR = mB;
+                        mVBR = (Int16)(mB & 0x7e00);
                         break;
                     case 35: // TVB - transfer variable base register to B
                         mB = mVBR;
@@ -519,10 +520,12 @@ namespace Emulator
             else
             {
                 ea = mIR & 511;
-                if ((mIR & 0x200) != 0) ea |= mPC & 0x7e00; // M flag
-                Boolean i = ((mIR & 0x400) != 0); // I flag
                 Boolean x = ((mIR & 0x800) != 0); // X flag
+                Boolean i = ((mIR & 0x400) != 0); // I flag
+                Boolean m = ((mIR & 0x200) != 0); // M flag
+                if (m) ea |= mPC & 0x7e00;
                 if (x) ea += (mXP) ? mX : mB;
+                if (!m && !x) ea |= mVBR & 0x7e00;
                 while (i)
                 {
                     mT = Read(ea);
