@@ -208,6 +208,9 @@ namespace Tape_Server
                                     if (p != 0) FILE_NAMES[p] = name;
                                 }
                                 rdr = File.Open(name, FileMode.Open, FileAccess.Read);
+                                if (rdr == null) break;
+                                rdr_en = true;
+                                if (rdr_buf == -1) rdr_buf = rdr.ReadByte();
                             }
                             if ((n & 0x0200) != 0) // reader enable
                             {
