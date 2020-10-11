@@ -92,6 +92,7 @@ namespace Tape_Server
 
             TcpListener L = new TcpListener(TCP_PORT);
             L.Start();
+            Console.Error.WriteLine("SEL810 Tape Server listening on port {0:D0}.", TCP_PORT);
             while (true)
             {
                 FileStream rdr = null;
@@ -104,6 +105,7 @@ namespace Tape_Server
                 Boolean pun_int = false;
                 Byte[] buf = new Byte[24];
                 Socket S = L.AcceptSocket();
+                Console.Error.WriteLine("Connection accepted from {0}.", S.RemoteEndPoint.ToString());
                 while (true)
                 {
                     Int32 n, p;
@@ -280,6 +282,7 @@ namespace Tape_Server
                     }
                 }
                 S.Close();
+                Console.Error.WriteLine("Connection closed.");
             }
         }
 
