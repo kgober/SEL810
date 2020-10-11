@@ -37,7 +37,7 @@ namespace Emulator
 
         private Int16[] mCore = new Int16[CORE_SIZE];
         private Int16 mT, mA, mB, mPC, mIR, mSR, mX, mPPR, mVBR;
-        private Boolean mOVF, mCF, mXP;
+        private Boolean mIOH, mOVF, mCF, mXP;
         private volatile Boolean mHalt = true;
         private volatile Boolean mStep = false;
 
@@ -190,6 +190,11 @@ namespace Emulator
         {
             mStep = true;
             while (mStep) Thread.Sleep(50);
+        }
+
+        public void ReleaseHold()
+        {
+            ClearIOH();
         }
 
         public void Exit()
@@ -692,6 +697,18 @@ namespace Emulator
             mHalt = true;
         }
 
+        private void SetIOH()
+        {
+            if (!mIOH && Program.VERBOSE) Console.Out.Write("[+IOH]");
+            mIOH = true;
+        }
+
+        private void ClearIOH()
+        {
+            if (mIOH && Program.VERBOSE) Console.Out.Write("[-IOH]");
+            mIOH = false;
+        }
+
         private void SetOVF()
         {
             if (!mOVF && Program.VERBOSE) Console.Out.Write("[+OVF]");
@@ -718,21 +735,22 @@ namespace Emulator
         {
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
-            if ((!wait) && (!dev.CommandReady)) return false;
+            Boolean rdy = dev.CommandReady;
+            if ((!wait) && (!rdy)) return false;
             DateTime start = DateTime.Now;
-            while (!dev.CommandReady)
+            while (!rdy)
             {
                 Thread.Sleep(10);
+                rdy = dev.CommandReady;
                 if ((DateTime.Now - start) > sIndicatorLag) break;
             }
-            if (!dev.CommandReady)
+            if (!rdy)
             {
-                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
-                while (!dev.CommandReady) Thread.Sleep(50);
-                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
+                SetIOH();
+                do Thread.Sleep(50); while (mIOH && !dev.CommandReady);
+                ClearIOH();
             }
-            dev.Command(command);
-            return true;
+            return dev.Command(command);
         }
 
         private Boolean IO_Test(Int32 unit, Int16 command)
@@ -746,21 +764,22 @@ namespace Emulator
         {
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
-            if ((!wait) && (!dev.WriteReady)) return false;
+            Boolean rdy = dev.WriteReady;
+            if ((!wait) && (!rdy)) return false;
             DateTime start = DateTime.Now;
-            while (!dev.WriteReady)
+            while (!rdy)
             {
                 Thread.Sleep(10);
+                rdy = dev.WriteReady;
                 if ((DateTime.Now - start) > sIndicatorLag) break;
             }
-            if (!dev.WriteReady)
+            if (!rdy)
             {
-                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
-                while (!dev.WriteReady) Thread.Sleep(20);
-                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
+                SetIOH();
+                do Thread.Sleep(20); while (mIOH && !dev.WriteReady);
+                ClearIOH();
             }
-            dev.Write(word);
-            return true;
+            return dev.Write(word);
         }
 
         private Boolean IO_Read(Int32 unit, out Int16 word, Boolean wait)
@@ -768,18 +787,20 @@ namespace Emulator
             word = 0;
             IO dev = mIO[unit];
             if (dev == null) return false; // TODO: what if wait=true?
-            if ((!wait) && (!dev.ReadReady)) return false;
+            Boolean rdy = dev.ReadReady;
+            if ((!wait) && (!rdy)) return false;
             DateTime start = DateTime.Now;
-            while (!dev.ReadReady)
+            while (!rdy)
             {
                 Thread.Sleep(10);
+                rdy = dev.ReadReady;
                 if ((DateTime.Now - start) > sIndicatorLag) break;
             }
-            if (!dev.ReadReady)
+            if (!rdy)
             {
-                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
-                while (!dev.ReadReady) Thread.Sleep(20);
-                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
+                SetIOH();
+                do Thread.Sleep(20); while (mIOH && !dev.ReadReady);
+                ClearIOH();
             }
             return dev.Read(out word);
         }

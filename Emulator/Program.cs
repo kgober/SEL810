@@ -65,14 +65,15 @@ namespace Emulator
                     Console.Out.WriteLine("b [val] - display or set B accumulator");
                     Console.Out.WriteLine("c[onsole] [mode] - display or set console mode");
                     Console.Out.WriteLine("d[ump] [addr] - dump 8 words at 'addr' (Enter to continue)");
+                    Console.Out.WriteLine("f[orce] - force ready (release I/O hold)");
                     Console.Out.WriteLine("g[o] - start CPU");
                     Console.Out.WriteLine("h[alt] - halt CPU");
                     Console.Out.WriteLine("ir [val] - display or set Instruction Register");
                     Console.Out.WriteLine("i[nput] filename - read paper tape input from 'filename'");
                     Console.Out.WriteLine("l[oad] [addr] filename - load memory from 'filename' at 'addr' (default 0)");
                     Console.Out.WriteLine("mc - master clear (clears all registers)");
-                    Console.Out.WriteLine("o[utput] filename - write paper tape output to 'filename'");
                     Console.Out.WriteLine("n[etwork] unit hostname:port - attach 'unit' via network");
+                    Console.Out.WriteLine("o[utput] filename - write paper tape output to 'filename'");
                     Console.Out.WriteLine("pc [val] - display or set Program Counter");
                     Console.Out.WriteLine("q[uit] [filename] - exit emulator, optionally saving state to 'filename'");
                     Console.Out.WriteLine("r[egisters] - display registers");
@@ -151,6 +152,10 @@ namespace Emulator
                 {
                     Dump(arg);
                     continue;
+                }
+                else if (cmd[0] == 'f') // force
+                {
+                    CPU.ReleaseHold();
                 }
                 else if (cmd[0] == 'g') // go
                 {
