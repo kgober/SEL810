@@ -307,7 +307,7 @@ namespace Tape_Server
                         case 'x':
                             buf[0] = (Byte)'x';
                             S.Send(buf, 0, 1, SocketFlags.None);
-                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
+                            if (DEBUG) Console.Out.WriteLine((Char)(buf[0]));
                             break;
                     }
                 }
