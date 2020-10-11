@@ -51,6 +51,7 @@ namespace Tape_Server
 
         static UInt16 TCP_PORT = DEFAULT_PORT;
         static String[] FILE_NAMES = new String[256];
+        static Boolean DEBUG = false;
 
         static void Main(String[] args)
         {
@@ -89,6 +90,10 @@ namespace Tape_Server
                     if (arg.Length == 0) arg = args[ap++];
                     if (!UInt16.TryParse(arg, out TCP_PORT)) TCP_PORT = DEFAULT_PORT;
                 }
+                else if (arg == "-d")
+                {
+                    DEBUG = true;
+                }
             }
 
             TcpListener L = new TcpListener(TCP_PORT);
@@ -112,6 +117,7 @@ namespace Tape_Server
                     Int32 n, p;
                     Int32 ct = S.Receive(buf, 0, 1, SocketFlags.None);
                     if (ct == 0) break;
+                    if (DEBUG) Console.Out.Write((Char)(buf[0]));
                     switch ((Char)(buf[0]))
                     {
                         case 'I':
@@ -124,6 +130,7 @@ namespace Tape_Server
                             {
                                 ct = S.Send(buf, p, n, SocketFlags.None);
                                 if (ct == 0) break;
+                                if (DEBUG) for (Int32 i = 0; i < ct; i++) Console.Out.Write((Char)(buf[p + i]));
                                 p += ct;
                                 n -= ct;
                             }
@@ -131,14 +138,17 @@ namespace Tape_Server
                         case 'C':
                             buf[0] = (Byte)('1');
                             S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             break;
                         case 'R':
                             buf[0] = (Byte)(((rdr == null) || (rdr.Position == rdr.Length)) ? '0' : '1');
                             S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             break;
                         case 'W':
                             buf[0] = (Byte)((pun == null) ? '0' : '1');
                             S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             break;
                         case 'T':
                             n = 4;
@@ -147,12 +157,14 @@ namespace Tape_Server
                             {
                                 ct = S.Receive(buf, p, n, SocketFlags.None);
                                 if (ct == 0) break;
+                                if (DEBUG) for (Int32 i = 0; i < ct; i++) Console.Out.Write((Char)(buf[p + i]));
                                 p += ct;
                                 n -= ct;
                             }
                             if (n > 0) break;
                             buf[0] = (Byte)('1');
                             S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             break;
                         case 'c':
                             n = 4;
@@ -161,6 +173,7 @@ namespace Tape_Server
                             {
                                 ct = S.Receive(buf, p, n, SocketFlags.None);
                                 if (ct == 0) break;
+                                if (DEBUG) for (Int32 i = 0; i < ct; i++) Console.Out.Write((Char)(buf[p + i]));
                                 p += ct;
                                 n -= ct;
                             }
@@ -206,7 +219,7 @@ namespace Tape_Server
                                 {
                                     Console.Error.Write("Enter tape {0:D0} pathname for reader: ", p);
                                     name = Console.In.ReadLine();
-                                    if (p != 0) FILE_NAMES[p] = name;
+                                    if ((p != 0) && (File.Exists(name))) FILE_NAMES[p] = name;
                                 }
                                 rdr = File.Open(name, FileMode.Open, FileAccess.Read);
                                 if (rdr == null) break;
@@ -217,8 +230,14 @@ namespace Tape_Server
                             {
                                 if (rdr == null)
                                 {
-                                    Console.Error.Write("Enter tape 0 pathname for reader: ");
-                                    String name = Console.In.ReadLine();
+                                    p = n & 0x00ff;
+                                    String name = FILE_NAMES[p];
+                                    if (name == null)
+                                    {
+                                        Console.Error.Write("Enter tape 0 pathname for reader: ");
+                                        name = Console.In.ReadLine();
+                                        if ((p != 0) && (File.Exists(name))) FILE_NAMES[p] = name;
+                                    }
                                     rdr = File.Open(name, FileMode.Open, FileAccess.Read);
                                 }
                                 if (rdr == null) break;
@@ -229,6 +248,9 @@ namespace Tape_Server
                             {
                                 rdr_en = false;
                             }
+                            buf[0] = (Byte)'.';
+                            S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             break;
                         case 'r':
                             if (rdr_buf != -1)
@@ -248,6 +270,7 @@ namespace Tape_Server
                             {
                                 ct = S.Send(buf, p, n, SocketFlags.None);
                                 if (ct == 0) break;
+                                if (DEBUG) for (Int32 i = 0; i < ct; i++) Console.Out.Write((Char)(buf[p + i]));
                                 p += ct;
                                 n -= ct;
                             }
@@ -265,6 +288,7 @@ namespace Tape_Server
                             {
                                 ct = S.Receive(buf, p, n, SocketFlags.None);
                                 if (ct == 0) break;
+                                if (DEBUG) for (Int32 i = 0; i < ct; i++) Console.Out.Write((Char)(buf[p + i]));
                                 p += ct;
                                 n -= ct;
                             }
@@ -273,6 +297,7 @@ namespace Tape_Server
                             pun_int = false;
                             buf[0] = (Byte)'.';
                             S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             if (pun_ien)
                             {
                                 if (pun != null) pun.Flush();
@@ -282,6 +307,7 @@ namespace Tape_Server
                         case 'x':
                             buf[0] = (Byte)'x';
                             S.Send(buf, 0, 1, SocketFlags.None);
+                            if (DEBUG) Console.Out.Write((Char)(buf[0]));
                             break;
                     }
                 }
