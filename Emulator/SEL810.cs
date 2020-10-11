@@ -41,6 +41,10 @@ namespace Emulator
         private volatile Boolean mHalt = true;
         private volatile Boolean mStep = false;
 
+        private Int16[] mIntRequest = new Int16[8]; // interrupt request
+        private Int16[] mIntEnabled = new Int16[8]; // interrupt enabled
+        private Int16[] mIntActive = new Int16[8]; // interrupt active
+
         private Int16[] mBPR = new Int16[CORE_SIZE];
         private Int16[] mBPW = new Int16[CORE_SIZE];
 
@@ -231,6 +235,7 @@ namespace Emulator
             Int16 r16;
             Int32 r32;
             Int32 ea;
+            Boolean interruptBlocked = false;
             Int32 op = (mIR >> 12) & 15;
             if (op == 0)
             {
@@ -274,6 +279,7 @@ namespace Emulator
                             mCF = true; // TODO: find out exactly which instructions CF affects
                             mB &= 0x7fff; // AMA, SMA and NEG are documented, but what else?
                         }
+                        interruptBlocked = true;
                         break;
                     case 8: // RSA - right shift arithmetic
                         mA = (Int16)((mA & -32768) | (mA >> sc));
@@ -365,6 +371,7 @@ namespace Emulator
                         break;
                     case 29: // TOI - turn off interrupt
                         // TODO: implement
+                        interruptBlocked = true;
                         break;
                     case 30: // LOB - long branch
                         mT = Read(++mPC);
@@ -450,15 +457,19 @@ namespace Emulator
                         if (((mSR << unit) & 0x8000) == 0) ++mPC;
                         break;
                     case 6:
-                        if (unit == 0) // PIE - priority interrupt enable
+                        if (unit == 0) // 32 - priority interrupt enable
                         {
                             mT = Read(++mPC);
-                            // TODO: implement
+                            unit = mT & 0x7000;
+                            mIntEnabled[unit] |= (Int16)(mT & 0x0fff);
+                            interruptBlocked = true;
                         }
                         else if (unit == 1) // PID - priority interrupt disable
                         {
                             mT = Read(++mPC);
-                            // TODO: implement
+                            unit = mT & 0x7000;
+                            mIntEnabled[unit] &= (Int16)(~(mT & 0x0fff));
+                            interruptBlocked = true;
                         }
                         break;
                 }
@@ -582,6 +593,7 @@ namespace Emulator
                     case 10: // SPB - store place and branch
                         Write(ea, ++mPC);
                         mPC = (Int16)(ea);
+                        interruptBlocked = true;
                         break;
                     case 12: // IMS - increment memory and skip
                         mT = Read(ea);
@@ -746,8 +758,7 @@ namespace Emulator
                 while (!dev.ReadReady) Thread.Sleep(20);
                 if (Program.VERBOSE) Console.Out.Write("[-IOH]");
             }
-            word = dev.Read();
-            return true;
+            return dev.Read(out word);
         }
     }
 }
