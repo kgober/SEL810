@@ -153,6 +153,29 @@ namespace Emulator
             cons.SetPunch(outputFile);
         }
 
+        public void AttachDevice(Int16 unit, String destination)
+        {
+            if (mIO[unit] != null) mIO[unit].Exit();
+            if ((destination == null) || (destination.Length == 0)) return;
+            Int32 port;
+            Int32 p = destination.IndexOf(':');
+            if (p == -1)
+            {
+                port = 8100 + unit;
+            }
+            else if (!Int32.TryParse(destination.Substring(p + 1), out port))
+            {
+                Console.Out.WriteLine("Unrecognized TCP port: {0}", destination.Substring(p + 1));
+                port = -1;
+            }
+            else if ((port < 1) || (port > 65535))
+            {
+                Console.Out.WriteLine("Unrecognized TCP port: {0}", destination.Substring(p + 1));
+                port = -1;
+            }
+            if (port != -1) mIO[unit] = new NetworkDevice(destination, port);
+        }
+
         public void Start()
         {
             mHalt = false;

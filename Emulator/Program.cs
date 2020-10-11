@@ -72,6 +72,7 @@ namespace Emulator
                     Console.Out.WriteLine("l[oad] [addr] filename - load memory from 'filename' at 'addr' (default 0)");
                     Console.Out.WriteLine("mc - master clear (clears all registers)");
                     Console.Out.WriteLine("o[utput] filename - write paper tape output to 'filename'");
+                    Console.Out.WriteLine("n[etwork] unit hostname:port - attach 'unit' via network");
                     Console.Out.WriteLine("pc [val] - display or set Program Counter");
                     Console.Out.WriteLine("q[uit] [filename] - exit emulator, optionally saving state to 'filename'");
                     Console.Out.WriteLine("r[egisters] - display registers");
@@ -200,6 +201,25 @@ namespace Emulator
                     CPU.MasterClear();
                     Console.Out.WriteLine("A={0:X4}/{1}  B={2:X4}/{3}  T={4:X4}/{5}", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
                     Console.Out.WriteLine("PC={0:X4}/{1}  IR={2:X4}/{3}  {4}", CPU.PC, Octal(CPU.PC, 5), CPU.IR, Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                }
+                else if (cmd[0] == 'n') // network
+                {
+                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                    if ((p = arg.IndexOf(' ')) == -1) p = arg.Length;
+                    if (!ParseWord(arg.Substring(0, p), out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized unit number: {0}", arg.Substring(0, p));
+                    }
+                    else if ((word < 2) || (word > 63))
+                    {
+                        Console.Out.WriteLine("Invalid unit number: {0:D0}", word);
+                    }
+                    else
+                    {
+                        arg = arg.Substring(p);
+                        while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                        CPU.AttachDevice(word, arg);
+                    }
                 }
                 else if (cmd[0] == 'o') // output
                 {
