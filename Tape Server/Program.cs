@@ -74,12 +74,13 @@ namespace Tape_Server
                         }
                         String s = line.Substring(0, p);
                         Byte num;
-                        if (!Byte.TryParse(s, out num))
+                        if ((!Byte.TryParse(s, out num)) || (num == 0))
                         {
                             Console.Error.WriteLine("Invalid tape number: {0}", s);
                             continue;
                         }
                         FILE_NAMES[num] = line.Substring(p + 1);
+                        Console.Error.WriteLine("Tape {0:D0}: {1}", num, FILE_NAMES[num]);
                     }
                 }
                 else if (arg == "-p")
