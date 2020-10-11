@@ -254,7 +254,7 @@ namespace Emulator
                 Int32 p = 0;
                 while (n > 0)
                 {
-                    Int32 ct = mClient.Client.Receive(buf, p, n - p, SocketFlags.None, out mLastSocketError);
+                    Int32 ct = mClient.Client.Receive(buf, p, n, SocketFlags.None, out mLastSocketError);
                     if (ct == 0) return null;
                     p += ct;
                     n -= ct;
@@ -339,7 +339,7 @@ namespace Emulator
             Int32 p = 0;
             while (n > 0)
             {
-                Int32 ct = mClient.Client.Send(buf, p, n - p, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mClient.Client.Send(buf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
@@ -365,7 +365,7 @@ namespace Emulator
             Int32 p = 0;
             while (n > 0)
             {
-                Int32 ct = mClient.Client.Send(buf, p, n - p, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mClient.Client.Send(buf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
@@ -390,7 +390,7 @@ namespace Emulator
             Int32 p = 0;
             while (n > 0)
             {
-                ct = mClient.Client.Receive(buf, p, n - p, SocketFlags.None, out mLastSocketError);
+                ct = mClient.Client.Receive(buf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
@@ -420,7 +420,7 @@ namespace Emulator
             Int32 p = 0;
             while (n > 0)
             {
-                Int32 ct = mClient.Client.Send(buf, p, n - p, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mClient.Client.Send(buf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
