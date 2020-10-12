@@ -47,6 +47,7 @@ namespace Emulator
         private Boolean mTOI, mIntBlocked;
         private Int32 mIntGroup = 8;
         private Int16 mIntLevel = 0;
+        private Int16 mIntMask = 0;
 
         private Int16[] mBPR = new Int16[CORE_SIZE];
         private Int16[] mBPW = new Int16[CORE_SIZE];
@@ -667,27 +668,30 @@ namespace Emulator
                 {
                     Int16 mask = (Int16)(mIntRequest[i] & mIntEnabled[i]);
                     if (mask == 0) continue;
-                    if ((i < mIntGroup) || ((mask & ~mIntLevel) > mIntLevel))
+                    if ((i < mIntGroup) || ((mask & ~mIntMask) > mIntMask))
                     {
                         // set new active interrupt group/level
                         mIntGroup = i;
-                        mIntLevel = 0x800;
-                        while (mIntLevel > 0)
+                        mIntMask = 0x800;
+                        while (mIntMask > 0)
                         {
-                            if ((mask & mIntLevel) != 0) break;
-                            mIntLevel >>= 1;
+                            if ((mask & mIntMask) != 0) break;
+                            mIntMask >>= 1;
                         }
-                        mIntActive[mIntGroup] |= mIntLevel;
+                        mIntActive[mIntGroup] |= mIntMask;
 
                         // select interrupt vector
                         ea = 514 + mIntGroup * 16;
                         if (mIntGroup > 2) ea += 16; // skip '1060 range used by BTC
-                        mask = mIntLevel;
+                        mask = mIntMask;
+                        mIntLevel = 1;
                         while ((mask & 0x800) == 0)
                         {
+                            mIntLevel++;
                             ea++;
                             mask <<= 1;
                         }
+                        Console.Out.Write("[+I{0:D2}]", mIntGroup * 12 + mIntLevel);
 
                         // execute SPB* instruction
                         mT = Read(ea);
@@ -750,29 +754,31 @@ namespace Emulator
 
         private void DoTOI()
         {
-            Int16 mask = (Int16)(~mIntLevel);
+            Int16 mask = (Int16)(~mIntMask);
             mIntActive[mIntGroup] &= mask;
             mIntRequest[mIntGroup] &= mask;
+            Console.Out.Write("[-I{0:D2}]", mIntGroup * 12 + mIntLevel);
+            mTOI = false;
             for (Int32 i = 0; i < 8; i++)
             {
                 if (mIntActive[i] == 0) continue;
                 Int16 A = mIntActive[i];
                 mask = 0x800;
+                Int16 lev = 1;
                 while (mask != 0)
                 {
                     if ((A & mask) != 0) break;
                     mask >>= 1;
+                    lev++;
                 }
-                if (mask != 0)
-                {
-                    mIntGroup = i;
-                    mIntLevel = mask;
-                    break;
-                }
+                mIntGroup = i;
+                mIntLevel = lev;
+                mIntMask = mask;
+                return;
             }
             mIntGroup = 8;
             mIntLevel = 0;
-            mTOI = false;
+            mIntMask = 0;
         }
 
 

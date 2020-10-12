@@ -228,7 +228,7 @@ namespace Emulator
 
     
     // Network Protocol:
-    // Interrupts: send 'I', receive 24 hex digits (highest to lowest priority)
+    // Interrupts: send 'I', receive '-' or 24 hex digits (highest to lowest priority)
     // CommandReady: send 'C', receive '1' (ready) or '0' (not ready)
     // ReadReady: send 'R', receive '1' (ready) or '0' (not ready)
     // WriteReady: send 'W', receive '1' (ready) or '0' (not ready)
@@ -267,11 +267,18 @@ namespace Emulator
                 Byte[] buf = new Byte[24];
                 buf[0] = (Byte)'I';
                 if (mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return null;
-                Int32 n = 24;
-                Int32 p = 0;
+                Int32 ct = mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError);
+                if (ct == 0) return null;
+                if (buf[0] == (Byte)'-')
+                {
+                    for (Int32 i = 0; i < 8; i++) mInts[i] = 0;
+                    return mInts;
+                }
+                Int32 n = 23;
+                Int32 p = 1;
                 while (n > 0)
                 {
-                    Int32 ct = mClient.Client.Receive(buf, p, n, SocketFlags.None, out mLastSocketError);
+                    ct = mClient.Client.Receive(buf, p, n, SocketFlags.None, out mLastSocketError);
                     if (ct == 0) return null;
                     p += ct;
                     n -= ct;
