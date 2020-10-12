@@ -29,15 +29,15 @@ namespace Emulator
 {
     abstract class IO
     {
-        public abstract Int16[] Interrupts { get; }
-        public abstract Boolean CommandReady { get; }
-        public abstract Boolean ReadReady { get; }
-        public abstract Boolean WriteReady { get; }
-        public abstract Boolean Test(Int16 word);
-        public abstract Boolean Command(Int16 word);
-        public abstract Boolean Read(out Int16 word);
-        public abstract Boolean Write(Int16 word);
-        public abstract void Exit();
+        public abstract Int16[] Interrupts { get; }     // get interrupts requested by device
+        public abstract Boolean CommandReady { get; }   // check if device ready for command (CEU)
+        public abstract Boolean ReadReady { get; }      // check if device ready for read (AIP/MIP)
+        public abstract Boolean WriteReady { get; }     // check if device ready for write (AOP/MOP)
+        public abstract Boolean Test(Int16 word);       // test device (TEU)
+        public abstract Boolean Command(Int16 word);    // command device (CEU)
+        public abstract Boolean Read(out Int16 word);   // read device (AIP/MIP)
+        public abstract Boolean Write(Int16 word);      // write device (AOP/MOP)
+        public abstract void Exit();                    // disconnect device from Emulator
     }
 
     class Teletype : IO
@@ -47,8 +47,10 @@ namespace Emulator
         private static TimeSpan sKeyboardDelay = new TimeSpan(0, 0, 0, 0, 40); // 100 is more accurate
         private static TimeSpan sPrinterDelay = new TimeSpan(0, 0, 0, 0, 40); // 100 is more accurate
 
-        private Thread mWorker;
-        private NetworkStream mNetwork;
+        private Int32 mNetworkPort;
+        private Thread mNetworkThread;
+        private NetworkStream mTerminal;
+
         private Stream mReader;
         private DateTime mLastRead = DateTime.MinValue;
         private Int32 mReaderBuf;
@@ -61,10 +63,11 @@ namespace Emulator
         private Boolean mIntIn;
         private Boolean mIntOut;
 
-        public Teletype()
+        public Teletype(Int32 listenPort)
         {
-            mWorker = new Thread(new ThreadStart(WorkerThread));
-            mWorker.Start();
+            mNetworkPort = listenPort;
+            mNetworkThread = new Thread(new ThreadStart(WorkerThread));
+            mNetworkThread.Start();
         }
 
         public override Int16[] Interrupts
@@ -88,9 +91,9 @@ namespace Emulator
             {
                 Boolean f = false;
                 DateTime now = DateTime.Now;
-                if (((mCommand & 0x0400) != 0) && (mNetwork != null))
+                if (((mCommand & 0x0400) != 0) && (mTerminal != null))
                 {
-                    if (((now - mLastRead) > sKeyboardDelay) && (mNetwork.DataAvailable)) f = true;
+                    if (((now - mLastRead) > sKeyboardDelay) && (mTerminal.DataAvailable)) f = true;
                 }
                 if (((mCommand & 0x0800) != 0) && (mReader != null))
                 {
@@ -110,9 +113,9 @@ namespace Emulator
             {
                 if ((DateTime.Now - mLastWrite) < sPrinterDelay) return false;
                 Boolean f = false;
-                if ((mMode == 1) && (mNetwork != null)) f = true;
+                if ((mMode == 1) && (mTerminal != null)) f = true;
                 if ((mMode == 2) && (mPunch != null)) f = true;
-                if ((mMode == 3) && (mNetwork != null) && (mPunch != null)) f = true;
+                if ((mMode == 3) && (mTerminal != null) && (mPunch != null)) f = true;
                 return f;
             }
         }
@@ -155,7 +158,7 @@ namespace Emulator
                 mReaderBuf = -1;
                 return true;
             }
-            Int32 n = mNetwork.ReadByte();
+            Int32 n = mTerminal.ReadByte();
             if (n == -1)
             {
                 word = 0;
@@ -169,7 +172,7 @@ namespace Emulator
         {
             mLastWrite = DateTime.Now;
             Byte b = (Byte)((word >> 8) & 0xff);
-            if ((mMode & 1) != 0) mNetwork.WriteByte(b);
+            if ((mMode & 1) != 0) mTerminal.WriteByte(b);
             if ((mMode & 2) != 0) mPunch.WriteByte(b);
             return true;
         }
@@ -178,8 +181,8 @@ namespace Emulator
         {
             if (mPunch != null) mPunch.Close();
             if (mReader != null) mReader.Close();
-            if (mNetwork != null) mNetwork.Close();
-            mWorker.Abort();
+            if (mTerminal != null) mTerminal.Close();
+            mNetworkThread.Abort();
         }
 
         public void SetReader(String inputFile)
@@ -211,17 +214,17 @@ namespace Emulator
 
         private void WorkerThread()
         {
-            TcpListener L = new TcpListener(8101);
+            TcpListener L = new TcpListener(mNetworkPort);
             L.Start();
             while (true)
             {
                 TcpClient C = L.AcceptTcpClient();
-                mNetwork = C.GetStream();
+                lock(this) mTerminal = C.GetStream();
                 Console.Out.Write("[+TTY]");
                 while (C.Connected) Thread.Sleep(100);
                 C.Close();
                 Console.Out.Write("[-TTY]");
-                mNetwork = null;
+                lock(this) mTerminal = null;
             }
         }
     }

@@ -28,7 +28,8 @@ namespace Emulator
 {
     class SEL810
     {
-        public const Int32 CORE_SIZE = 32768;
+        public const Int32 CORE_SIZE = 32768;       // number of words of memory
+        public const Int32 DEFAULT_TTY_PORT = 8101; // TCP port for console TTY
 
         private static TimeSpan sIndicatorLag = new TimeSpan(0, 0, 0, 0, 200);
 
@@ -63,7 +64,7 @@ namespace Emulator
             mCPUThread = new Thread(new ThreadStart(CPUThread));
             mCPUThread.Start();
 
-            mIO[1] = new Teletype();
+            mIO[1] = new Teletype(DEFAULT_TTY_PORT);
         }
 
         public Boolean IsHalted
