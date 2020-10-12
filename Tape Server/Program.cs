@@ -104,6 +104,7 @@ namespace Tape_Server
                 FileStream rdr = null;
                 FileStream pun = null;
                 Int32 rdr_buf = -1;
+                Int32 rdr_num = -1;
                 Boolean rdr_en = false;
                 Boolean rdr_ien = false;
                 Boolean rdr_int = false;
@@ -223,24 +224,31 @@ namespace Tape_Server
                                 }
                                 rdr = File.Open(name, FileMode.Open, FileAccess.Read);
                                 if (rdr == null) break;
+                                rdr_num = p;
                                 rdr_en = true;
                                 if (rdr_buf == -1) rdr_buf = rdr.ReadByte();
                             }
                             if ((n & 0x0200) != 0) // reader enable
                             {
+                                p = n & 0x00ff;
+                                if ((rdr != null) && (p != rdr_num))
+                                {
+                                    rdr.Close();
+                                    rdr = null;
+                                }
                                 if (rdr == null)
                                 {
-                                    p = n & 0x00ff;
                                     String name = FILE_NAMES[p];
                                     if (name == null)
                                     {
-                                        Console.Error.Write("Enter tape 0 pathname for reader: ");
+                                        Console.Error.Write("Enter tape {0:D0} pathname for reader: ", p);
                                         name = Console.In.ReadLine();
                                         if ((p != 0) && (File.Exists(name))) FILE_NAMES[p] = name;
                                     }
                                     rdr = File.Open(name, FileMode.Open, FileAccess.Read);
                                 }
                                 if (rdr == null) break;
+                                rdr_num = p;
                                 rdr_en = true;
                                 if (rdr_buf == -1) rdr_buf = rdr.ReadByte();
                             }
