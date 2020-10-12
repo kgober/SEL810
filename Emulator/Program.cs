@@ -85,6 +85,97 @@ namespace Emulator
                     Console.Out.WriteLine("= [addr] [val] - write 'val' to 'addr' (Enter to continue)");
                     Console.Out.WriteLine(". [addr [count]] - set a read breakpoint at 'addr'");
                     Console.Out.WriteLine("! [addr [count]] - set a write breakpoint at 'addr'");
+                    Console.Out.WriteLine("<reg>+ val - set a breakpoint on <reg> = 'val'");
+                    Console.Out.WriteLine("<reg>- val - clear a breakpoint on <reg> = 'val'");
+                    Console.Out.WriteLine("<reg>? - display breakpoints on <reg>");
+                }
+                else if (cmd.EndsWith("+"))
+                {
+                    cmd = cmd.Substring(0, cmd.Length - 1);
+                    switch (cmd.ToUpper())
+                    {
+                        case "A": p = 0; break;
+                        case "B": p = 1; break;
+                        case "IR": p = 2; break;
+                        case "PC": p = 3; break;
+                        default: p = -1; break;
+                    }
+                    if (p == -1)
+                    {
+                        Console.Out.WriteLine("Unrecognized register: {0}", cmd);
+                    }
+                    else if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized value: {0}", arg);
+                    }
+                    else if ((p == 3) && (word < 0))
+                    {
+                        Console.Out.WriteLine("Invalid PC value: {0}", arg);
+                    }
+                    else
+                    {
+                        CPU.SetBPReg(p, ((Int32)(word)) & 0xffff);
+                    }
+                }
+                else if (cmd.EndsWith("-"))
+                {
+                    cmd = cmd.Substring(0, cmd.Length - 1);
+                    switch (cmd.ToUpper())
+                    {
+                        case "A": p = 0; break;
+                        case "B": p = 1; break;
+                        case "IR": p = 2; break;
+                        case "PC": p = 3; break;
+                        default: p = -1; break;
+                    }
+                    if (p == -1)
+                    {
+                        Console.Out.WriteLine("Unrecognized register: {0}", cmd);
+                    }
+                    else if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized value: {0}", arg);
+                    }
+                    else if ((p == 3) && (word < 0))
+                    {
+                        Console.Out.WriteLine("Invalid PC value: {0}", arg);
+                    }
+                    else
+                    {
+                        CPU.ClearBPReg(p, ((Int32)(word)) & 0xffff);
+                    }
+                }
+                else if (cmd.EndsWith("?"))
+                {
+                    cmd = cmd.Substring(0, cmd.Length - 1);
+                    String reg = cmd.ToUpper();
+                    switch (reg)
+                    {
+                        case "A": p = 0; break;
+                        case "B": p = 1; break;
+                        case "IR": p = 2; break;
+                        case "PC": p = 3; break;
+                        default: p = -1; break;
+                    }
+                    if (p == -1)
+                    {
+                        Console.Out.WriteLine("Unrecognized register: {0}", cmd);
+                    }
+                    else
+                    {
+                        Int32 n = (p == 3) ? 32768 : 65536;
+                        Int32 w = (p == 3) ? 5 : 6;
+                        Int32 ct = 0;
+                        for (Int32 i = 0; i < n; i++)
+                        {
+                            if (!CPU.GetBPReg(p, i)) continue;
+                            word = (Int16)(i & 0x7fff);
+                            if (i >= 32768) word += -32768;
+                            Console.Out.WriteLine("{0} BP: {1:x4}/{2}", reg, word, Octal(word, w));
+                            ct++;
+                        }
+                        if (ct == 0) Console.Out.WriteLine("{0} BP: none set", reg);
+                    }
                 }
                 else if (cmd == "a")
                 {

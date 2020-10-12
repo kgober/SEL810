@@ -51,6 +51,10 @@ namespace Emulator
 
         private Int16[] mBPR = new Int16[CORE_SIZE];
         private Int16[] mBPW = new Int16[CORE_SIZE];
+        private Boolean[] mBPA = new Boolean[65536];
+        private Boolean[] mBPB = new Boolean[65536];
+        private Boolean[] mBPIR = new Boolean[65536];
+        private Boolean[] mBPPC = new Boolean[32768];
 
         private IO[] mIO = new IO[64];
 
@@ -244,6 +248,40 @@ namespace Emulator
             }
         }
 
+        public Boolean GetBPReg(Int32 index, Int32 value)
+        {
+            switch (index)
+            {
+                case 0: return mBPA[value];
+                case 1: return mBPB[value];
+                case 2: return mBPIR[value];
+                case 3: return mBPPC[value];
+            }
+            return false;
+        }
+
+        public void SetBPReg(Int32 index, Int32 value)
+        {
+            switch (index)
+            {
+                case 0: mBPA[value] = true; return;
+                case 1: mBPB[value] = true; return;
+                case 2: mBPIR[value] = true; return;
+                case 3: mBPPC[value] = true; return;
+            }
+        }
+
+        public void ClearBPReg(Int32 index, Int32 value)
+        {
+            switch (index)
+            {
+                case 0: mBPA[value] = false; return;
+                case 1: mBPB[value] = false; return;
+                case 2: mBPIR[value] = false; return;
+                case 3: mBPPC[value] = false; return;
+            }
+        }
+
         private void CPUThread()
         {
             while (true)
@@ -271,6 +309,7 @@ namespace Emulator
             Int16 r16;
             Int32 r32;
             Int32 ea;
+            Boolean fPC = false;
             Int32 op = (mIR >> 12) & 15;
             if (op == 0)
             {
@@ -281,89 +320,89 @@ namespace Emulator
                 switch (aug)
                 {
                     case 0: // HLT - halt
-                        mIR = Read(mPC);
+                        wIR(Read(mPC));
                         SetHalt();
                         return;
                     case 1: // RNA - round A
                         r16 = mA;
                         if ((mB & 0x4000) != 0) r16++;
                         if ((r16 == 0) && (mA != 0)) SetOVF();
-                        mA = r16;
+                        wA(r16);
                         break;
                     case 2: // NEG - negate A
                         if (mA == -32768) SetOVF();
-                        mA = (Int16)(-mA - ((mCF) ? 1 : 0));
+                        wA((Int16)(-mA - ((mCF) ? 1 : 0)));
                         break;
                     case 3: // CLA - clear A
-                        mA = 0;
+                        wA(0);
                         break;
                     case 4: // TBA - transfer B to A
-                        mA = mB;
+                        wA(mB);
                         break;
                     case 5: // TAB - transfer A to B
-                        mB = mA;
+                        wB(mA);
                         break;
                     case 6: // IAB - interchange A and B
                         r16 = mA;
-                        mA = mB;
-                        mB = r16;
+                        wA(mB);
+                        wB(r16);
                         break;
                     case 7: // CSB - copy sign of B
                         if (mB < 0)
                         {
                             mCF = true; // TODO: find out exactly which instructions CF affects
-                            mB &= 0x7fff; // AMA, SMA and NEG are documented, but what else?
+                            wB(mB &= 0x7fff); // AMA, SMA and NEG are documented, but what else?
                         }
                         mIntBlocked = true;
                         break;
                     case 8: // RSA - right shift arithmetic
-                        mA = (Int16)((mA & -32768) | (mA >> sc));
+                        wA((Int16)((mA & -32768) | (mA >> sc)));
                         break;
                     case 9: // LSA - left shift arithmetic
                         r16 = (Int16)(mA & 0x7fff);
                         r16 <<= sc;
                         mA &= -32768;
-                        mA |= (Int16)(r16 & 0x7fff);
+                        wA(mA |= (Int16)(r16 & 0x7fff));
                         break;
                     case 10: // FRA - full right arithmetic shift
                         r32 = (mA << 16) | ((mB & 0x7fff) << 1);
                         r32 >>= sc;
-                        mA = (Int16)(r32 >> 16);
+                        wA((Int16)(r32 >> 16));
                         mB &= -32768;
-                        mB |= (Int16)((r32 >> 1) & 0x7fff);
+                        wB(mB |= (Int16)((r32 >> 1) & 0x7fff));
                         break;
                     case 11: // FLL - full left logical shift
                         r32 = (mA << 16) | (mB & 0xffff);
                         r32 <<= sc;
-                        mA = (Int16)((r32 >> 16) & 0xffff);
-                        mB = (Int16)(r32 & 0xffff);
+                        wA((Int16)((r32 >> 16) & 0xffff));
+                        wB((Int16)(r32 & 0xffff));
                         break;
                     case 12: // FRL - full rotate left
                         Int64 r64 = (mA << 16) | (mB & 0xffff);
                         r64 <<= sc;
-                        mA = (Int16)((r64 >> 16) & 0xffff);
+                        wA((Int16)((r64 >> 16) & 0xffff));
                         mB <<= sc;
                         r64 >>= 32;
-                        mB |= (Int16)(r64 & ((1 << sc) - 1));
+                        wB(mB |= (Int16)(r64 & ((1 << sc) - 1)));
                         break;
                     case 13: // RSL - right shift logical
                         r32 = mA & 0xffff;
                         r32 >>= sc;
-                        mA = (Int16)(r32);
+                        wA((Int16)(r32));
                         break;
                     case 14: // LSL - logical shift left
-                        mA <<= sc;
+                        wA(mA <<= sc);
                         break;
                     case 15: // FLA - full left arithmetic shift
                         r32 = (mA << 16) | ((mB & 0x7fff) << 1);
                         r32 <<= sc;
                         mA &= -32768;
-                        mA |= (Int16)((r32 >> 16) & 0x7fff);
+                        wA(mA |= (Int16)((r32 >> 16) & 0x7fff));
                         mB &= -32768;
-                        mB |= (Int16)((r32 >> 1) & 0x7fff);
+                        wB(mB |= (Int16)((r32 >> 1) & 0x7fff));
                         break;
                     case 16: // ASC - complement sign of accumulator
-                        mA ^= -32768;
+                        wA(mA ^= -32768);
                         break;
                     case 17: // SAS - skip on accumulator sign
                         if (mA > 0) ++mPC;
@@ -383,17 +422,17 @@ namespace Emulator
                         else ++mPC;
                         break;
                     case 22: // IBS - increment B and skip
-                        mB++;
+                        wB(++mB);
                         if (mB >= 0) ++mPC;
                         break;
                     case 23: // ABA - and B and A accumulators
-                        mA = (Int16)(mA & mB);
+                        wA((Int16)(mA & mB));
                         break;
                     case 24: // OBA - or B and A accumulators
-                        mA = (Int16)(mA | mB);
+                        wA((Int16)(mA | mB));
                         break;
                     case 25: // LCS - load control switches
-                        mA = mSR;
+                        wA(mSR);
                         break;
                     case 26: // SNO - skip normalized accumulator
                         if ((mA & 0x8000) != ((mA << 1) & 0x8000)) ++mPC;
@@ -402,15 +441,17 @@ namespace Emulator
                         break;
                     case 28: // CNS - convert number system
                         if (mA == -32768) SetOVF();
-                        if (mA < 0) mA = (Int16)(-mA | -32768);
+                        if (mA < 0) wA((Int16)(-mA | -32768));
                         break;
                     case 29: // TOI - turn off interrupt
                         mIntBlocked = true;
                         mTOI = true;
                         break;
                     case 30: // LOB - long branch
-                        mT = Read(++mPC);
-                        mPC = (Int16)((mT & 0x7fff) - 1);
+                        wPC(++mPC);
+                        mT = Read(mPC);
+                        wPC((Int16)(mT & 0x7fff));
+                        fPC = true;
                         if (mTOI) DoTOI();
                         break;
                     case 31: // OVS - set overflow
@@ -420,22 +461,24 @@ namespace Emulator
                         mPPR = mB;
                         break;
                     case 33: // TPB - transfer protect register to B
-                        mB = mPPR;
+                        wB(mPPR);
                         break;
                     case 34: // TBV - transfer B to variable base register
                         mVBR = (Int16)(mB & 0x7e00);
                         break;
                     case 35: // TVB - transfer variable base register to B
-                        mB = mVBR;
+                        wB(mVBR);
                         break;
                     case 36: // STX - store index
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         Write(ea, mX);
                         break;
                     case 37: // LIX - load index
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         mT = Read(ea);
                         mX = mT;
                         break;
@@ -456,7 +499,7 @@ namespace Emulator
                         mX = mA;
                         break;
                     case 43: // TXA - transfer index register to A
-                        mA = mX;
+                        wA(mX);
                         break;
                     default: // TODO: what do undefined opcodes do?
                         break;
@@ -471,20 +514,23 @@ namespace Emulator
                 switch (aug)
                 {
                     case 0: // CEU - command external unit (skip mode)
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         mT = Read(ea);
                         if (IO_Command(unit, mT, false)) ++mPC;
                         break;
                     case 1: // CEU - command external unit (wait mode)
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         mT = Read(ea);
                         IO_Command(unit, mT, true);
                         break;
                     case 2: // TEU - test external unit
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         mT = Read(ea);
                         if (IO_Test(unit, mT)) ++mPC;
                         break;
@@ -495,14 +541,14 @@ namespace Emulator
                     case 6:
                         if (unit == 0) // PIE - priority interrupt enable
                         {
-                            mT = Read(++mPC);
+                            mT = Read(wPC(++mPC));
                             unit = mT & 0x7000;
                             mIntEnabled[unit] |= (Int16)(mT & 0x0fff);
                             mIntBlocked = true;
                         }
                         else if (unit == 1) // PID - priority interrupt disable
                         {
-                            mT = Read(++mPC);
+                            mT = Read(wPC(++mPC));
                             unit = mT & 0x7000;
                             mIntEnabled[unit] &= (Int16)(~(mT & 0x0fff));
                             mIntBlocked = true;
@@ -528,37 +574,41 @@ namespace Emulator
                     case 2: // AIP - accumulator input from peripheral (skip mode)
                         if (IO_Read(unit, out r16, false))
                         {
-                            if (!r) mA = 0;
-                            mA += r16;
+                            if (r) wA((Int16)((mA + r16) & 0xffff));
+                            else wA(r16);
                             ++mPC;
                         }
                         break;
                     case 3: // AIP - accumulator input from peripheral (wait mode)
                         IO_Read(unit, out r16, true);
-                        if (!r) mA = 0;
-                        mA += r16;
+                        if (r) wA((Int16)((mA + r16) & 0xffff));
+                        else wA(r16);
                         break;
                     case 4: // MOP - memory output to peripheral (skip mode)
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         mT = Read(ea);
                         if (IO_Write(unit, mT, false)) ++mPC;
                         break;
                     case 5: // MOP - memory output to peripheral (wait mode)
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         mT = Read(ea);
                         IO_Write(unit, mT, true);
                         break;
                     case 6: // MIP - memory input from peripheral (skip mode)
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         if (IO_Read(unit, out r16, false)) ++mPC;
                         Write(ea, r16);
                         break;
                     case 7: // MIP - memory input from peripheral (wait mode)
-                        if (!i) ea = ++mPC;
-                        else ea = Indirect(++mPC, m);
+                        wPC(++mPC);
+                        if (!i) ea = mPC;
+                        else ea = Indirect(mPC, m);
                         IO_Read(unit, out r16, true);
                         Write(ea, r16);
                         break;
@@ -585,11 +635,11 @@ namespace Emulator
                 {
                     case 1: // LAA - load A accumulator
                         mT = Read(ea);
-                        mA = mT;
+                        wA(mT);
                         break;
                     case 2: // LBA - load B accumulator
                         mT = Read(ea);
-                        mB = mT;
+                        wB(mT);
                         break;
                     case 3: // STA - store A accumulator
                         Write(ea, mA);
@@ -601,35 +651,36 @@ namespace Emulator
                         mT = Read(ea);
                         r16 = (Int16)(mA + mT + ((mCF) ? 1 : 0));
                         if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
-                        mA = r16;
+                        wA(r16);
                         break;
                     case 6: // SMA - subtract memory from A
                         mT = Read(ea);
                         r16 = (Int16)(mA - mT - ((mCF) ? 1 : 0));
                         if (((mA & 0x8000) != (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
-                        mA = r16;
+                        wA(r16);
                         break;
                     case 7: // MPY - multiply
                         mT = Read(ea);
                         r32 = mT * mB;
                         if ((mT == -32768) && (mB == -32768)) SetOVF();
-                        mB = (Int16)(r32 & 0x7fff);
-                        mA = (Int16)((r32 >> 15) & 0xffff);
+                        wB((Int16)(r32 & 0x7fff));
+                        wA((Int16)((r32 >> 15) & 0xffff));
                         break;
                     case 8: // DIV - divide
                         mT = Read(ea);
                         r32 = (mA <<  15) | (mB & 0x7fff);
                         if (mA >= mT) SetOVF();
-                        mB = (Int16)(r32 % mT);
-                        mA = (Int16)(r32 / mT);
+                        wB((Int16)(r32 % mT));
+                        wA((Int16)(r32 / mT));
                         break;
                     case 9: // BRU - branch unconditional
-                        mPC = (Int16)(ea - 1);
+                        wPC((Int16)(ea));
+                        fPC = true;
                         if ((mTOI) && ((mIR & 0x400) != 0)) DoTOI();
                         break;
                     case 10: // SPB - store place and branch
                         Write(ea, ++mPC);
-                        mPC = (Int16)(ea);
+                        wPC((Int16)(ea));
                         mIntBlocked = true;
                         break;
                     case 12: // IMS - increment memory and skip
@@ -646,12 +697,13 @@ namespace Emulator
                         mT = Read(ea);
                         r16 = (Int16)(mB + mT);
                         if (((mB & 0x8000) == (mT & 0x8000)) && ((mB & 0x8000) != (r16 & 0x8000))) SetOVF();
-                        mB = r16;
+                        wB(r16);
                         break;
                 }
             }
             if (mIR != 7) mCF = false;
-            mIR = Read(++mPC);
+            if (!fPC) wPC(++mPC);
+            wIR(Read(mPC));
 
             // check for interrupt requests
             for (Int32 i = 0; i < mIO.Length; i++)
@@ -701,8 +753,8 @@ namespace Emulator
                         mT = Read(ea);
                         ea = mT & 0x7fff;
                         Write(ea, mPC);
-                        mPC = (Int16)(ea + 1);
-                        mIR = Read(mPC);
+                        wPC((Int16)(ea + 1));
+                        wIR(Read(mPC));
                         mIntBlocked = true;
                         break;
                     }
@@ -723,6 +775,69 @@ namespace Emulator
             }
             while (i);
             return addr;
+        }
+
+        private Int16 wA(Int16 value)
+        {
+            Int32 p = value & 0x7fff;
+            if (value < 0) p += 32768;
+            lock (mBPA)
+            {
+                if (mBPA[p])
+                {
+                    SetHalt();
+                    Console.Out.Write("[A:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                }
+            }
+            mA = value;
+            return value;
+        }
+
+        private Int16 wB(Int16 value)
+        {
+            Int32 p = value & 0x7fff;
+            if (value < 0) p += 32768;
+            lock (mBPB)
+            {
+                if (mBPB[p])
+                {
+                    SetHalt();
+                    Console.Out.Write("[B:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                }
+            }
+            mB = value;
+            return value;
+        }
+
+        private Int16 wIR(Int16 value)
+        {
+            Int32 p = value & 0x7fff;
+            if (value < 0) p += 32768;
+            lock (mBPIR)
+            {
+                if (mBPIR[p])
+                {
+                    SetHalt();
+                    Console.Out.Write("[IR:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                }
+            }
+            mIR = value;
+            return value;
+        }
+
+        private Int16 wPC(Int16 value)
+        {
+            Int32 p = value & 0x7fff;
+            lock (mBPPC)
+            {
+                if (mBPPC[p])
+                {
+                    SetHalt();
+                    Console.Out.Write("[PC:{0:x4}/{1}]", value, Program.Octal(value, 5));
+                }
+            }
+            mPC = value;
+            return value;
         }
 
         private Int16 Read(Int32 addr)
