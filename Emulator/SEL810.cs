@@ -159,7 +159,11 @@ namespace Emulator
 
         public void AttachDevice(Int16 unit, String destination)
         {
-            if (mIO[unit] != null) mIO[unit].Exit();
+            if (mIO[unit] != null)
+            {
+                mIO[unit].Exit();
+                mIO[unit] = null;
+            }
             if ((destination == null) || (destination.Length == 0)) return;
             Int32 port;
             Int32 p = destination.IndexOf(':');
