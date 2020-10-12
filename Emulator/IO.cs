@@ -161,7 +161,7 @@ namespace Emulator
                 word = 0;
                 return false;
             }
-            word = (Int16)(n);
+            word = (Int16)(n | 128);
             return true;
         }
 
