@@ -21,7 +21,7 @@
 
 
 // Network Protocol:
-// Interrupts: send 'I', receive 24 hex digits (highest to lowest priority)
+// Interrupts: send 'I', receive '-' or 24 hex digits (highest to lowest priority)
 // CommandReady: send 'C', receive '1' (ready) or '0' (not ready)
 // ReadReady: send 'R', receive '1' (ready) or '0' (not ready)
 // WriteReady: send 'W', receive '1' (ready) or '0' (not ready)
@@ -122,10 +122,18 @@ namespace Tape_Server
                     switch ((Char)(buf[0]))
                     {
                         case 'I':
-                            for (Int32 i = 0; i < 24; i++) buf[i] = (Byte)'0';
-                            if (rdr_int) buf[2] |= 2;
-                            if (pun_int) buf[2] |= 1;
-                            n = 24;
+                            if ((!rdr_int) && (!pun_int))
+                            {
+                                buf[0] = (Byte)'-';
+                                n = 1;
+                            }
+                            else
+                            {
+                                for (Int32 i = 0; i < 24; i++) buf[i] = (Byte)'0';
+                                if (rdr_int) buf[2] |= 2;
+                                if (pun_int) buf[2] |= 1;
+                                n = 24;
+                            }
                             p = 0;
                             while (n > 0)
                             {
