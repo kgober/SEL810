@@ -41,9 +41,12 @@ namespace Emulator
         private volatile Boolean mHalt = true;
         private volatile Boolean mStep = false;
 
-        private Int16[] mIntRequest = new Int16[8]; // interrupt request
-        private Int16[] mIntEnabled = new Int16[8]; // interrupt enabled
-        private Int16[] mIntActive = new Int16[8]; // interrupt active
+        private Int16[] mIntRequest = new Int16[9]; // interrupt request
+        private Int16[] mIntEnabled = new Int16[9]; // interrupt enabled
+        private Int16[] mIntActive = new Int16[9]; // interrupt active
+        private Boolean mTOI, mIntBlocked;
+        private Int32 mIntGroup = 8;
+        private Int16 mIntLevel = 0;
 
         private Int16[] mBPR = new Int16[CORE_SIZE];
         private Int16[] mBPW = new Int16[CORE_SIZE];
@@ -263,7 +266,6 @@ namespace Emulator
             Int16 r16;
             Int32 r32;
             Int32 ea;
-            Boolean interruptBlocked = false;
             Int32 op = (mIR >> 12) & 15;
             if (op == 0)
             {
@@ -307,7 +309,7 @@ namespace Emulator
                             mCF = true; // TODO: find out exactly which instructions CF affects
                             mB &= 0x7fff; // AMA, SMA and NEG are documented, but what else?
                         }
-                        interruptBlocked = true;
+                        mIntBlocked = true;
                         break;
                     case 8: // RSA - right shift arithmetic
                         mA = (Int16)((mA & -32768) | (mA >> sc));
@@ -398,12 +400,13 @@ namespace Emulator
                         if (mA < 0) mA = (Int16)(-mA | -32768);
                         break;
                     case 29: // TOI - turn off interrupt
-                        // TODO: implement
-                        interruptBlocked = true;
+                        mIntBlocked = true;
+                        mTOI = true;
                         break;
                     case 30: // LOB - long branch
                         mT = Read(++mPC);
                         mPC = (Int16)((mT & 0x7fff) - 1);
+                        if (mTOI) DoTOI();
                         break;
                     case 31: // OVS - set overflow
                         SetOVF();
@@ -485,19 +488,19 @@ namespace Emulator
                         if (((mSR << unit) & 0x8000) == 0) ++mPC;
                         break;
                     case 6:
-                        if (unit == 0) // 32 - priority interrupt enable
+                        if (unit == 0) // PIE - priority interrupt enable
                         {
                             mT = Read(++mPC);
                             unit = mT & 0x7000;
                             mIntEnabled[unit] |= (Int16)(mT & 0x0fff);
-                            interruptBlocked = true;
+                            mIntBlocked = true;
                         }
                         else if (unit == 1) // PID - priority interrupt disable
                         {
                             mT = Read(++mPC);
                             unit = mT & 0x7000;
                             mIntEnabled[unit] &= (Int16)(~(mT & 0x0fff));
-                            interruptBlocked = true;
+                            mIntBlocked = true;
                         }
                         break;
                 }
@@ -617,11 +620,12 @@ namespace Emulator
                         break;
                     case 9: // BRU - branch unconditional
                         mPC = (Int16)(ea - 1);
+                        if ((mTOI) && ((mIR & 0x400) != 0)) DoTOI();
                         break;
                     case 10: // SPB - store place and branch
                         Write(ea, ++mPC);
                         mPC = (Int16)(ea);
-                        interruptBlocked = true;
+                        mIntBlocked = true;
                         break;
                     case 12: // IMS - increment memory and skip
                         mT = Read(ea);
@@ -643,6 +647,59 @@ namespace Emulator
             }
             if (mIR != 7) mCF = false;
             mIR = Read(++mPC);
+
+            // check for interrupt requests
+            for (Int32 i = 0; i < mIO.Length; i++)
+            {
+                if (mIO[i] == null) continue;
+                Int16[] IRQ = mIO[i].Interrupts;
+                for (Int32 j = 0; j < 8; j++) if (IRQ[j] != 0) mIntRequest[j] |= IRQ[j];
+            }
+
+            // check whether to trigger an interrupt
+            if (mIntBlocked)
+            {
+                mIntBlocked = false;
+            }
+            else
+            {
+                for (Int32 i = 0; i <= mIntGroup; i++)
+                {
+                    Int16 mask = (Int16)(mIntRequest[i] & mIntEnabled[i]);
+                    if (mask == 0) continue;
+                    if ((i < mIntGroup) || ((mask & ~mIntLevel) > mIntLevel))
+                    {
+                        // set new active interrupt group/level
+                        mIntGroup = i;
+                        mIntLevel = 0x800;
+                        while (mIntLevel > 0)
+                        {
+                            if ((mask & mIntLevel) != 0) break;
+                            mIntLevel >>= 1;
+                        }
+                        mIntActive[mIntGroup] |= mIntLevel;
+
+                        // select interrupt vector
+                        ea = 514 + mIntGroup * 16;
+                        if (mIntGroup > 2) ea += 16; // skip '1060 range used by BTC
+                        mask = mIntLevel;
+                        while ((mask & 0x800) == 0)
+                        {
+                            ea++;
+                            mask <<= 1;
+                        }
+
+                        // execute SPB* instruction
+                        mT = Read(ea);
+                        ea = mT & 0x7fff;
+                        Write(ea, mPC);
+                        mPC = (Int16)(ea + 1);
+                        mIR = Read(mPC);
+                        mIntBlocked = true;
+                        break;
+                    }
+                }
+            }
         }
 
         private Int16 Indirect(Int16 addr, Boolean M)
@@ -690,6 +747,34 @@ namespace Emulator
             mCore[addr] = value;
             return value;
         }
+
+        private void DoTOI()
+        {
+            Int16 mask = (Int16)(~mIntLevel);
+            mIntActive[mIntGroup] &= mask;
+            mIntRequest[mIntGroup] &= mask;
+            for (Int32 i = 0; i < 8; i++)
+            {
+                if (mIntActive[i] == 0) continue;
+                Int16 A = mIntActive[i];
+                mask = 0x800;
+                while (mask != 0)
+                {
+                    if ((A & mask) != 0) break;
+                    mask >>= 1;
+                }
+                if (mask != 0)
+                {
+                    mIntGroup = i;
+                    mIntLevel = mask;
+                    break;
+                }
+            }
+            mIntGroup = 8;
+            mIntLevel = 0;
+            mTOI = false;
+        }
+
 
         private void SetHalt()
         {

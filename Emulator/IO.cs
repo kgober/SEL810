@@ -58,6 +58,8 @@ namespace Emulator
         private Int32 mCommand = 0x0400;
         private Int32 mMode = 1;
         private Int16[] mInterrupts = new Int16[8];
+        private Boolean mIntIn;
+        private Boolean mIntOut;
 
         public Teletype()
         {
@@ -67,7 +69,12 @@ namespace Emulator
 
         public override Int16[] Interrupts
         {
-            get { return mInterrupts; }
+            get
+            {
+                if ((mIntIn) && (ReadReady)) mInterrupts[0] |= 2;
+                if ((mIntOut) && (WriteReady)) mInterrupts[0] |= 1;
+                return mInterrupts;
+            }
         }
 
         public override Boolean CommandReady
@@ -123,6 +130,16 @@ namespace Emulator
 
         public override Boolean Command(Int16 word)
         {
+            if ((word & 0x2000) != 0)
+            {
+                mIntIn = ((word & 0x4000) != 0);
+                if (!mIntIn) mInterrupts[0] &= 0x0ffd;
+            }
+            if ((word & 0x1000) != 0)
+            {
+                mIntOut = ((word & 0x4000) != 0);
+                if (!mIntOut) mInterrupts[0] &= 0x0ffe;
+            }
             if (word != 0) mCommand = word;
             if ((mCommand & 0x0800) == 0) mReaderBuf = -1;
             // TODO: drop a keyboard char if disabling keyboard
