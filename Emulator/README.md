@@ -1,6 +1,21 @@
 This is a simple emulator of a SEL810 system.  It is a work in progress, and currently **lacks** support for:
-* interrupts
-* protection
+* Power Fail Safe interrupt
+* special interrupt card
+* Block Transfer Control (BTC) units
+* Program Protect and Instruction Trap (Option 81-080B)
+* Stall Alarm (Option 81-043B)
+* Auto Start (Option 81-041B)
+* Input/Output Parity (Option 81-210B)
+* 60Hz Real-Time Clock (Option 81-031B)
+* graphical front panel
+* built-in peripherals other than the Console Teletype paper tape reader/punch
+
+The emulator listens on TCP port 8101 for a TCP connection from a terminal
+emulator to be used as the Console Teletype keyboard and printer.
+
+Peripherals other than the Console Teletype may be attached via TCP, with the
+emulator acting as a client connecting to a device server.  See "Tape Server"
+in this repository for an example.
 
 #### Examples
 Start the emulator and 'toggle in' the bootstrap at location 0:
