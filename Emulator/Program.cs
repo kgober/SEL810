@@ -216,23 +216,23 @@ namespace Emulator
                         Console.Out.Write("Console Mode: ");
                         switch (CPU.ConsoleMode)
                         {
-                            case 1: Console.Out.WriteLine("1=printer"); break;
-                            case 2: Console.Out.WriteLine("2=punch"); break;
-                            case 3: Console.Out.WriteLine("3=both (printer and punch)"); break;
+                            case Teletype.Mode.Printer: Console.Out.WriteLine("1=printer"); break;
+                            case Teletype.Mode.Punch: Console.Out.WriteLine("2=punch"); break;
+                            case Teletype.Mode.Both: Console.Out.WriteLine("3=both (printer and punch)"); break;
                             default: Console.Out.WriteLine("? unknown ({0:D0})", CPU.ConsoleMode); break;
                         }
                     }
                     else if ((arg == "1") || (arg == "printer"))
                     {
-                        CPU.ConsoleMode = 1;
+                        CPU.ConsoleMode = Teletype.Mode.Printer;
                     }
                     else if ((arg == "2") || (arg == "punch"))
                     {
-                        CPU.ConsoleMode = 2;
+                        CPU.ConsoleMode = Teletype.Mode.Punch;
                     }
                     else if ((arg == "3") || (arg == "both"))
                     {
-                        CPU.ConsoleMode = 3;
+                        CPU.ConsoleMode = Teletype.Mode.Both;
                     }
                     else
                     {

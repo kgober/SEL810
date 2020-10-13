@@ -34,6 +34,7 @@
 
 using System;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 
@@ -54,6 +55,17 @@ namespace Emulator
 
     class Teletype : IO
     {
+        [Flags]
+        public enum Mode
+        {
+            None = 0,
+            Printer = 1,
+            Punch = 2,
+            Both = 3,
+            Keyboard = 4,
+            Reader = 8,
+        }
+
         private static TimeSpan sReaderReadDelay = new TimeSpan(0, 0, 0, 0, 20); // 50 is more accurate
         private static TimeSpan sReaderStopDelay = new TimeSpan(0, 0, 0, 0, 12);
         private static TimeSpan sKeyboardDelay = new TimeSpan(0, 0, 0, 0, 40); // 100 is more accurate
@@ -61,24 +73,31 @@ namespace Emulator
 
         private Int32 mNetworkPort;
         private Thread mNetworkThread;
+        private volatile Boolean mNetworkExit;
         private NetworkStream mTerminal;
 
-        private Stream mReader;
+        private Mode mInMode = Mode.Keyboard;
         private DateTime mLastRead = DateTime.MinValue;
-        private Int32 mReaderBuf;
+        private Stream mReader;
         private Int32 mReaderCount;
-        private Stream mPunch;
+        private Int32 mReaderBuf;
+        private Int32 mKeyBuf;
+
+        private Mode mOutMode = Mode.Printer;
         private DateTime mLastWrite = DateTime.MinValue;
-        private Int32 mCommand = 0x0400;
-        private Int32 mMode = 1;
+        private Stream mPunch;
+        private Int32 mPunchCount;
+
         private Int16[] mInterrupts = new Int16[8];
-        private Boolean mIntInEn;
-        private Boolean mIntOutEn;
+        private Boolean mInt_EnIn;
+        private Boolean mInt_In;
+        private Boolean mInt_EnOut;
+        private Boolean mInt_Out;
 
         public Teletype(Int32 listenPort)
         {
             mNetworkPort = listenPort;
-            mNetworkThread = new Thread(new ThreadStart(WorkerThread));
+            mNetworkThread = new Thread(new ThreadStart(TerminalThread));
             mNetworkThread.Start();
         }
 
@@ -86,46 +105,86 @@ namespace Emulator
         {
             get
             {
+                DateTime now = DateTime.Now;
+                if ((mInMode == Mode.Keyboard) && (mTerminal != null) && (mKeyBuf == -1))
+                {
+                    if ((mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                    {
+                        mKeyBuf = mTerminal.ReadByte() | 128;
+                    }
+                }
+                if ((mInMode == Mode.Reader) && (mReader != null) && (mReaderBuf == -1))
+                {
+                    if ((mReader.Position < mReader.Length) && ((now - mLastRead) > sReaderStopDelay))
+                    {
+                        mReaderBuf = mReader.ReadByte();
+                        Console.Out.Write(((++mReaderCount % 512) == 0) ? '^' : '`');
+                    }
+                }
+                if ((mInt_EnIn) && (!mInt_In))
+                {
+                    if ((mInMode == Mode.Keyboard) && (mKeyBuf != -1)) mInt_In = true;
+                    else if ((mInMode == Mode.Reader) && (mReaderBuf != -1)) mInt_In = true;
+                }
+                if ((mInt_EnOut) && (!mInt_Out))
+                {
+                    if ((now - mLastWrite) > sPrinterDelay) mInt_Out = true;
+                }
+                if ((!mInt_In) && (!mInt_Out)) return null;
                 mInterrupts[0] = 0;
-                if ((mIntInEn) && (ReadReady))
-                {
-                    mInterrupts[0] |= 2;
-                    if ((mIntOutEn) && (WriteReady)) mInterrupts[0] |= 1;
-                    return mInterrupts;
-                }
-                else if ((mIntOutEn) && (WriteReady))
-                {
-                    mInterrupts[0] |= 1;
-                    return mInterrupts;
-                }
-                return null;
+                if (mInt_In) mInterrupts[0] |= 2;
+                if (mInt_Out) mInterrupts[0] |= 1;
+                return mInterrupts;
             }
         }
 
         public override Boolean CommandReady
         {
-            get { return true; }
+            get
+            {
+                DateTime now = DateTime.Now;
+                if ((mInMode == Mode.Keyboard) && (mTerminal != null) && (mKeyBuf == -1))
+                {
+                    if ((mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                    {
+                        mKeyBuf = mTerminal.ReadByte() | 128;
+                    }
+                }
+                if ((mInMode == Mode.Reader) && (mReader != null) && (mReaderBuf == -1))
+                {
+                    if ((mReader.Position < mReader.Length) && ((now - mLastRead) > sReaderStopDelay))
+                    {
+                        mReaderBuf = mReader.ReadByte();
+                        Console.Out.Write(((++mReaderCount % 512) == 0) ? '^' : '`');
+                    }
+                }
+                return true;
+            }
         }
 
         public override Boolean ReadReady
         {
             get
             {
-                Boolean f = false;
                 DateTime now = DateTime.Now;
-                if (((mCommand & 0x0400) != 0) && (mTerminal != null))
+                if ((mInMode == Mode.Keyboard) && (mTerminal != null) && (mKeyBuf == -1))
                 {
-                    if (((now - mLastRead) > sKeyboardDelay) && (mTerminal.DataAvailable)) f = true;
-                }
-                if (((mCommand & 0x0800) != 0) && (mReader != null))
-                {
-                    if ((mReaderBuf == -1) && ((now - mLastRead) > sReaderStopDelay))
+                    if ((mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
                     {
-                        if ((mReaderBuf = mReader.ReadByte()) != -1) Console.Out.Write(((++mReaderCount % 512) == 0) ? '^' : '`');
+                        mKeyBuf = mTerminal.ReadByte() | 128;
                     }
-                    if (((now - mLastRead) > sReaderReadDelay) && (mReaderBuf != -1)) f = true;
                 }
-                return f;
+                if ((mInMode == Mode.Reader) && (mReader != null) && (mReaderBuf == -1))
+                {
+                    if ((mReader.Position < mReader.Length) && ((now - mLastRead) > sReaderStopDelay))
+                    {
+                        mReaderBuf = mReader.ReadByte();
+                        Console.Out.Write(((++mReaderCount % 512) == 0) ? '^' : '`');
+                    }
+                }
+                if ((mInMode == Mode.Keyboard) && (mKeyBuf != -1)) return true;
+                if ((mInMode == Mode.Reader) && (mReaderBuf != -1) && ((now - mLastRead) > sReaderReadDelay)) return true;
+                return false;
             }
         }
 
@@ -134,18 +193,17 @@ namespace Emulator
             get
             {
                 if ((DateTime.Now - mLastWrite) < sPrinterDelay) return false;
-                Boolean f = false;
-                if ((mMode == 1) && (mTerminal != null)) f = true;
-                if ((mMode == 2) && (mPunch != null)) f = true;
-                if ((mMode == 3) && (mTerminal != null) && (mPunch != null)) f = true;
-                return f;
+                if ((mOutMode == Mode.Printer) && (mTerminal != null)) return true;
+                if ((mOutMode == Mode.Punch) && (mPunch != null)) return true;
+                if ((mOutMode == Mode.Both) && (mTerminal != null) && (mPunch != null)) return true;
+                return false;
             }
         }
 
-        public Int32 Mode
+        public Mode OutputMode
         {
-            get { return mMode; }
-            set { mMode = value; }
+            get { return mOutMode; }
+            set { mOutMode = value; }
         }
 
         public override Boolean Test(Int16 word)
@@ -157,54 +215,95 @@ namespace Emulator
         {
             if ((word & 0x2000) != 0)
             {
-                mIntInEn = ((word & 0x4000) != 0);
-                if (!mIntInEn) mInterrupts[0] &= 0x0ffd;
+                mInt_EnIn = ((word & 0x4000) != 0);
+                if (!mInt_EnIn)
+                {
+                    mInterrupts[0] &= 0x0ffd;
+                    mInt_In = false;
+                }
             }
             if ((word & 0x1000) != 0)
             {
-                mIntOutEn = ((word & 0x4000) != 0);
-                if (!mIntOutEn) mInterrupts[0] &= 0x0ffe;
+                mInt_EnOut = ((word & 0x4000) != 0);
+                if (!mInt_EnOut)
+                {
+                    mInterrupts[0] &= 0x0ffe;
+                    mInt_Out = false;
+                }
             }
-            if (word != 0) mCommand = word;
-            if ((mCommand & 0x0800) == 0) mReaderBuf = -1;
-            // TODO: drop a keyboard char if disabling keyboard
+            if ((word & 0x0800) != 0)
+            {
+                mInMode = Mode.Reader;
+                mReaderBuf = -1;
+                mKeyBuf = -1;
+                mInt_In = false;
+            }
+            if ((word & 0x0400) != 0)
+            {
+                mInMode = Mode.Keyboard;
+                mReaderBuf = -1;
+                mKeyBuf = -1;
+                mInt_In = false;
+            }
+            if ((word & 0x0200) != 0)
+            {
+                mInMode = Mode.None;
+                mReaderBuf = -1;
+                mKeyBuf = -1;
+                mInt_In = false;
+            }
             return true;
         }
 
         public override Boolean Read(out Int16 word)
         {
-            mLastRead = DateTime.Now;
-            if (((mCommand & 0x0800) != 0) && (mReaderBuf != -1))
+            DateTime now = DateTime.Now;
+            if ((mInMode == Mode.Reader) && (mReaderBuf != -1))
             {
                 word = (Int16)(mReaderBuf & 0xff);
                 mReaderBuf = -1;
+                mInt_In = false;
+                mLastRead = now;
                 return true;
             }
-            Int32 n = mTerminal.ReadByte();
-            if (n == -1)
+            if ((mInMode == Mode.Keyboard) && (mKeyBuf != -1))
             {
-                word = 0;
-                return false;
+                word = (Int16)(mKeyBuf & 0xff);
+                mKeyBuf = -1;
+                mInt_In = false;
+                mLastRead = now;
+                return true;
             }
-            word = (Int16)(n | 128);
-            return true;
+            word = 0;
+            return false;
         }
 
         public override Boolean Write(Int16 word)
         {
-            mLastWrite = DateTime.Now;
+            DateTime now = DateTime.Now; 
             Byte b = (Byte)((word >> 8) & 0xff);
-            if ((mMode & 1) != 0) mTerminal.WriteByte(b);
-            if ((mMode & 2) != 0) mPunch.WriteByte(b);
+            if (((mOutMode & Mode.Printer) != 0) && (mTerminal != null))
+            {
+                mTerminal.WriteByte(b);
+                mLastWrite = now;
+            }
+            if (((mOutMode & Mode.Punch) != 0) && (mPunch != null))
+            {
+                if (mPunch.Position == 0) for (Int32 i = 0; i < 128; i++) mPunch.WriteByte(0);
+                mPunch.WriteByte(b);
+                Console.Out.Write(((++mReaderCount % 512) == 0) ? '+' : '-');
+                mLastWrite = now;
+            }
+            mInt_Out = false;
             return true;
         }
 
         public override void Exit()
         {
-            if (mPunch != null) mPunch.Close();
-            if (mReader != null) mReader.Close();
-            if (mTerminal != null) mTerminal.Close();
-            mNetworkThread.Abort();
+            if (mReader != null) SetReader(null);
+            if (mPunch != null) SetPunch(null);
+            mNetworkExit = true;
+            mNetworkThread.Join();
         }
 
         public void SetReader(String inputFile)
@@ -234,20 +333,23 @@ namespace Emulator
             Console.Out.Write("[+PUN]");
         }
 
-        private void WorkerThread()
+        private void TerminalThread()
         {
-            TcpListener L = new TcpListener(mNetworkPort);
+            TcpListener L = new TcpListener(IPAddress.Any, mNetworkPort);
             L.Start();
-            while (true)
+            while (!mNetworkExit)
             {
+                while ((!L.Pending()) && (!mNetworkExit)) Thread.Sleep(100);
+                if (mNetworkExit) break;
                 TcpClient C = L.AcceptTcpClient();
                 lock(this) mTerminal = C.GetStream();
                 Console.Out.Write("[+TTY]");
-                while (C.Connected) Thread.Sleep(100);
+                while ((C.Connected) && (!mNetworkExit)) Thread.Sleep(100);
                 C.Close();
                 Console.Out.Write("[-TTY]");
                 lock(this) mTerminal = null;
             }
+            L.Stop();
         }
     }
 

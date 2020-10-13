@@ -109,10 +109,10 @@ namespace Emulator
             set { mSR = value; } // TODO: make thread-safe
         }
 
-        public Int32 ConsoleMode
+        public Teletype.Mode ConsoleMode
         {
-            get { return (mIO[1] as Teletype).Mode; } // TODO: make thread-safe
-            set { (mIO[1] as Teletype).Mode = value; } // TODO: make thread-safe
+            get { return (mIO[1] as Teletype).OutputMode; } // TODO: make thread-safe
+            set { (mIO[1] as Teletype).OutputMode = value; } // TODO: make thread-safe
         }
 
         public Int16 this[Int32 index]
