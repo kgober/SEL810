@@ -20,6 +20,18 @@
 // SOFTWARE.
 
 
+// Network Protocol:
+// Interrupts: send 'I', receive 24 hex digits ('-' means remaining digits are '0')
+// CommandReady: send 'C', receive '1' (ready) or '0' (not ready)
+// ReadReady: send 'R', receive '1' (ready) or '0' (not ready)
+// WriteReady: send 'W', receive '1' (ready) or '0' (not ready)
+// Test: send 'T' followed by 4 hex digits (MSB first), receive '1' or '0'
+// Command: send 'c' followed by 4 hex digits, receive '.'
+// Read: send 'r', receive 4 hex digits (or '????' if not ready)
+// Write: send 'w' followed by 4 hex digits, receive '.'
+// Exit: send 'x', receive 'x'
+
+
 using System;
 using System.IO;
 using System.Net.Sockets;
@@ -230,24 +242,15 @@ namespace Emulator
     }
 
     
-    // Network Protocol:
-    // Interrupts: send 'I', receive '-' or 24 hex digits (highest to lowest priority)
-    // CommandReady: send 'C', receive '1' (ready) or '0' (not ready)
-    // ReadReady: send 'R', receive '1' (ready) or '0' (not ready)
-    // WriteReady: send 'W', receive '1' (ready) or '0' (not ready)
-    // Test: send 'T' followed by 4 hex digits (MSB first), receive '1' or '0'
-    // Command: send 'c' followed by 4 hex digits, receive '.'
-    // Read: send 'r', receive 4 hex digits
-    // Write: send 'w' followed by 4 hex digits, receive '.'
-    // Exit: send 'x', receive 'x'
-
     class NetworkDevice : IO
     {
         private String mHost;
         private Int32 mPort;
         private TcpClient mClient;
+        private Socket mSocket;
         private Boolean mLazyConnect;
         private SocketError mLastSocketError;
+        private Byte[] mBuf = new Byte[24];
         private Int16[] mInts = new Int16[8];
 
         public NetworkDevice(String host, Int32 port)
@@ -255,6 +258,7 @@ namespace Emulator
             mHost = host;
             mPort = port;
             mClient = new TcpClient();
+            mSocket = mClient.Client;
             mLazyConnect = true;
         }
 
@@ -262,36 +266,29 @@ namespace Emulator
         {
             get
             {
-                if (!mClient.Connected)
+                if (!mSocket.Connected)
                 {
                     if (!mLazyConnect) return null;
                     if (!Connect()) return null;
                 }
-                Byte[] buf = new Byte[24];
-                buf[0] = (Byte)'I';
-                if (mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return null;
-                Int32 ct = mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError);
-                if (ct == 0) return null;
-                if (buf[0] == (Byte)'-')
+                mBuf[0] = (Byte)'I';
+                if (mSocket.Send(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return null;
+                Int32 p = 0;
+                while (p < 24)
                 {
-                    for (Int32 i = 0; i < 8; i++) mInts[i] = 0;
-                    return mInts;
-                }
-                Int32 n = 23;
-                Int32 p = 1;
-                while (n > 0)
-                {
-                    ct = mClient.Client.Receive(buf, p, n, SocketFlags.None, out mLastSocketError);
+                    Int32 ct = mSocket.Receive(mBuf, p, 1, SocketFlags.None, out mLastSocketError);
                     if (ct == 0) return null;
-                    p += ct;
-                    n -= ct;
+                    if (mBuf[p] == (Byte)'-') break;
+                    mBuf[p] = HexToBinary(mBuf[p]);
+                    p++;
                 }
+                while (p < 24) mBuf[p++] = 0;
                 p = 0;
                 for (Int32 i = 0; i < 8; i++)
                 {
-                    n = HexToBinary(buf[p++]) << 8;
-                    n |= HexToBinary(buf[p++]) << 4;
-                    n |= HexToBinary(buf[p++]);
+                    Int32 n = mBuf[p++] << 8;
+                    n |= mBuf[p++] << 4;
+                    n |= mBuf[p++];
                     mInts[i] = (Int16)(n);
                 }
                 return mInts;
@@ -302,16 +299,15 @@ namespace Emulator
         {
             get
             {
-                if (!mClient.Connected)
+                if (!mSocket.Connected)
                 {
                     if (!mLazyConnect) return false;
                     if (!Connect()) return false;
                 }
-                Byte[] buf = new Byte[1];
-                buf[0] = (Byte)'C';
-                if (mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-                if (mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-                return (buf[0] == '1');
+                mBuf[0] = (Byte)'C';
+                if (mSocket.Send(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+                if (mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+                return (mBuf[0] == '1');
             }
         }
 
@@ -319,16 +315,15 @@ namespace Emulator
         {
             get
             {
-                if (!mClient.Connected)
+                if (!mSocket.Connected)
                 {
                     if (!mLazyConnect) return false;
                     if (!Connect()) return false;
                 }
-                Byte[] buf = new Byte[1];
-                buf[0] = (Byte)'R';
-                if (mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-                if (mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-                return (buf[0] == '1');
+                mBuf[0] = (Byte)'R';
+                if (mSocket.Send(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+                if (mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+                return (mBuf[0] == '1');
             }
         }
 
@@ -336,143 +331,136 @@ namespace Emulator
         {
             get
             {
-                if (!mClient.Connected)
+                if (!mSocket.Connected)
                 {
                     if (!mLazyConnect) return false;
                     if (!Connect()) return false;
                 }
-                Byte[] buf = new Byte[1];
-                buf[0] = (Byte)'W';
-                if (mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-                if (mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-                return (buf[0] == '1');
+                mBuf[0] = (Byte)'W';
+                if (mSocket.Send(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+                if (mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+                return (mBuf[0] == '1');
             }
         }
 
         public override Boolean Test(Int16 word)
         {
-            if (!mClient.Connected)
+            if (!mSocket.Connected)
             {
                 if (!mLazyConnect) return false;
                 if (!Connect()) return false;
             }
-            Byte[] buf = new Byte[5];
-            buf[0] = (Byte)'T';
-            buf[1] = BinaryToHex((word >> 12) & 15);
-            buf[2] = BinaryToHex((word >> 8) & 15);
-            buf[3] = BinaryToHex((word >> 4) & 15);
-            buf[4] = BinaryToHex(word & 15);
+            mBuf[0] = (Byte)'T';
+            mBuf[1] = BinaryToHex((word >> 12) & 15);
+            mBuf[2] = BinaryToHex((word >> 8) & 15);
+            mBuf[3] = BinaryToHex((word >> 4) & 15);
+            mBuf[4] = BinaryToHex(word & 15);
             Int32 n = 5;
             Int32 p = 0;
             while (n > 0)
             {
-                Int32 ct = mClient.Client.Send(buf, p, n, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mSocket.Send(mBuf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
             }
-            if (mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-            return (buf[0] == '1');
+            if (mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+            return (mBuf[0] == '1');
         }
 
         public override Boolean Command(Int16 word)
         {
-            if (!mClient.Connected)
+            if (!mSocket.Connected)
             {
                 if (!mLazyConnect) return false;
                 if (!Connect()) return false;
             }
-            Byte[] buf = new Byte[5];
-            buf[0] = (Byte)'c';
-            buf[1] = BinaryToHex((word >> 12) & 15);
-            buf[2] = BinaryToHex((word >> 8) & 15);
-            buf[3] = BinaryToHex((word >> 4) & 15);
-            buf[4] = BinaryToHex(word & 15);
+            mBuf[0] = (Byte)'c';
+            mBuf[1] = BinaryToHex((word >> 12) & 15);
+            mBuf[2] = BinaryToHex((word >> 8) & 15);
+            mBuf[3] = BinaryToHex((word >> 4) & 15);
+            mBuf[4] = BinaryToHex(word & 15);
             Int32 n = 5;
             Int32 p = 0;
             while (n > 0)
             {
-                Int32 ct = mClient.Client.Send(buf, p, n, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mSocket.Send(mBuf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
             }
-            if (mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-            return (buf[0] == '.');
+            if (mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+            return (mBuf[0] == '.');
         }
 
         public override Boolean Read(out Int16 word)
         {
             word = 0;
-            if (!mClient.Connected)
+            if (!mSocket.Connected)
             {
                 if (!mLazyConnect) return false;
                 if (!Connect()) return false;
             }
-            Byte[] buf = new Byte[4];
-            buf[0] = (Byte)'r';
-            Int32 ct = mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError);
-            if (ct == 0) return false;
+            mBuf[0] = (Byte)'r';
+            if (mSocket.Send(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
             Int32 n = 4;
             Int32 p = 0;
             while (n > 0)
             {
-                ct = mClient.Client.Receive(buf, p, n, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mSocket.Receive(mBuf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
             }
-            n = HexToBinary(buf[0]) << 12;
-            n |= HexToBinary(buf[1]) << 8;
-            n |= HexToBinary(buf[2]) << 4;
-            n |= HexToBinary(buf[3]);
-            word = (Int16)(n & 0xffff);
+            n = HexToBinary(mBuf[0]) << 12;
+            n |= HexToBinary(mBuf[1]) << 8;
+            n |= HexToBinary(mBuf[2]) << 4;
+            n |= HexToBinary(mBuf[3]);
+            word = (Int16)(n);
             return true;
         }
 
         public override Boolean Write(Int16 word)
         {
-            if (!mClient.Connected)
+            if (!mSocket.Connected)
             {
                 if (!mLazyConnect) return false;
                 if (!Connect()) return false;
             }
-            Byte[] buf = new Byte[5];
-            buf[0] = (Byte)'w';
-            buf[1] = BinaryToHex((word >> 12) & 15);
-            buf[2] = BinaryToHex((word >> 8) & 15);
-            buf[3] = BinaryToHex((word >> 4) & 15);
-            buf[4] = BinaryToHex(word & 15);
+            mBuf[0] = (Byte)'w';
+            mBuf[1] = BinaryToHex((word >> 12) & 15);
+            mBuf[2] = BinaryToHex((word >> 8) & 15);
+            mBuf[3] = BinaryToHex((word >> 4) & 15);
+            mBuf[4] = BinaryToHex(word & 15);
             Int32 n = 5;
             Int32 p = 0;
             while (n > 0)
             {
-                Int32 ct = mClient.Client.Send(buf, p, n, SocketFlags.None, out mLastSocketError);
+                Int32 ct = mSocket.Send(mBuf, p, n, SocketFlags.None, out mLastSocketError);
                 if (ct == 0) return false;
                 p += ct;
                 n -= ct;
             }
-            if (mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
-            return (buf[0] == '.');
+            if (mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError) == 0) return false;
+            return (mBuf[0] == '.');
         }
 
         public override void Exit()
         {
-            if (!mClient.Connected) return;
-            Byte[] buf = new Byte[1];
-            buf[0] = (Byte)'x';
-            Int32 ct = mClient.Client.Send(buf, 0, 1, SocketFlags.None, out mLastSocketError);
-            if (ct != 0) mClient.Client.Receive(buf, 0, 1, SocketFlags.None, out mLastSocketError);
-            mClient.Close();
+            if (!mSocket.Connected) return;
+            mBuf[0] = (Byte)'x';
+            Int32 ct = mSocket.Send(mBuf, 0, 1, SocketFlags.None, out mLastSocketError);
+            if (ct != 0) mSocket.Receive(mBuf, 0, 1, SocketFlags.None, out mLastSocketError);
+            mSocket.Close();
         }
 
         public Boolean Connect()
         {
-            if (mClient.Connected) return true;
+            if (mSocket.Connected) return true;
             try
             {
-                mClient.Connect(mHost, mPort);
-                return mClient.Connected;
+                mSocket.Connect(mHost, mPort);
+                return mSocket.Connected;
             }
             catch
             {
@@ -480,17 +468,17 @@ namespace Emulator
             }
         }
 
-        private Int32 HexToBinary(Int32 value)
+        private Byte HexToBinary(Int32 value)
         {
-            value |= 32;
-            if (value > 96) return value - 87;
-            return value - 48;
+            value |= 32; // force letters to lower case
+            if (value > 96) return (Byte)(value - 87); // 'a' -> 10, 'b' -> 11, etc.
+            return (Byte)(value - 48); // '0' -> 0, '1' -> 1, etc.
         }
 
         private Byte BinaryToHex(Int32 value)
         {
-            if (value > 9) return (Byte)(value + 87);
-            return (Byte)(value + 48);
+            if (value > 9) return (Byte)(value + 87); // 10 -> 'a', 11 -> 'b', etc.
+            return (Byte)(value + 48); // 0 -> '0', 1 -> '1', etc.
         }
     }
 }
