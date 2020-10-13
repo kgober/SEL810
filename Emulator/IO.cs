@@ -72,8 +72,8 @@ namespace Emulator
         private Int32 mCommand = 0x0400;
         private Int32 mMode = 1;
         private Int16[] mInterrupts = new Int16[8];
-        private Boolean mIntIn;
-        private Boolean mIntOut;
+        private Boolean mIntInEn;
+        private Boolean mIntOutEn;
 
         public Teletype(Int32 listenPort)
         {
@@ -86,9 +86,19 @@ namespace Emulator
         {
             get
             {
-                if ((mIntIn) && (ReadReady)) mInterrupts[0] |= 2;
-                if ((mIntOut) && (WriteReady)) mInterrupts[0] |= 1;
-                return mInterrupts;
+                mInterrupts[0] = 0;
+                if ((mIntInEn) && (ReadReady))
+                {
+                    mInterrupts[0] |= 2;
+                    if ((mIntOutEn) && (WriteReady)) mInterrupts[0] |= 1;
+                    return mInterrupts;
+                }
+                else if ((mIntOutEn) && (WriteReady))
+                {
+                    mInterrupts[0] |= 1;
+                    return mInterrupts;
+                }
+                return null;
             }
         }
 
@@ -147,13 +157,13 @@ namespace Emulator
         {
             if ((word & 0x2000) != 0)
             {
-                mIntIn = ((word & 0x4000) != 0);
-                if (!mIntIn) mInterrupts[0] &= 0x0ffd;
+                mIntInEn = ((word & 0x4000) != 0);
+                if (!mIntInEn) mInterrupts[0] &= 0x0ffd;
             }
             if ((word & 0x1000) != 0)
             {
-                mIntOut = ((word & 0x4000) != 0);
-                if (!mIntOut) mInterrupts[0] &= 0x0ffe;
+                mIntOutEn = ((word & 0x4000) != 0);
+                if (!mIntOutEn) mInterrupts[0] &= 0x0ffe;
             }
             if (word != 0) mCommand = word;
             if ((mCommand & 0x0800) == 0) mReaderBuf = -1;
@@ -282,6 +292,7 @@ namespace Emulator
                     mBuf[p] = HexToBinary(mBuf[p]);
                     p++;
                 }
+                if (p == 0) return null;
                 while (p < 24) mBuf[p++] = 0;
                 p = 0;
                 for (Int32 i = 0; i < 8; i++)

@@ -711,6 +711,7 @@ namespace Emulator
             {
                 if (mIO[i] == null) continue;
                 Int16[] IRQ = mIO[i].Interrupts;
+                if (IRQ == null) continue;
                 for (Int32 j = 0; j < 8; j++) if (IRQ[j] != 0) mIntRequest[j] |= IRQ[j];
             }
 
