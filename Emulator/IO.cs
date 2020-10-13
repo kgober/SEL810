@@ -291,7 +291,7 @@ namespace Emulator
             {
                 if (mPunch.Position == 0) for (Int32 i = 0; i < 128; i++) mPunch.WriteByte(0);
                 mPunch.WriteByte(b);
-                Console.Out.Write(((++mReaderCount % 512) == 0) ? '+' : '-');
+                Console.Out.Write(((++mPunchCount % 512) == 0) ? '+' : '-');
                 mLastWrite = now;
             }
             mInt_Out = false;

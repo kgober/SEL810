@@ -246,15 +246,15 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'f') // force
                 {
-                    CPU.ReleaseHold();
+                    CPU.ReleaseIOHold();
                 }
                 else if (cmd[0] == 'g') // go
                 {
-                    CPU.Start();
+                    CPU.Run();
                 }
                 else if (cmd[0] == 'h') // halt
                 {
-                    CPU.Stop();
+                    CPU.Halt();
                 }
                 else if (cmd == "ir")
                 {
@@ -339,7 +339,7 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'q') // quit
                 {
-                    CPU.Stop();
+                    CPU.Halt();
                     if (arg.Length != 0) SaveState(arg);
                     CPU.Exit();
                     break;

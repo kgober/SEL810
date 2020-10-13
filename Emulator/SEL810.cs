@@ -36,11 +36,13 @@ namespace Emulator
         private Object mLock = new Object();
         private Thread mCPUThread;
 
+        private volatile Boolean vIOHold = false;
+        private volatile Boolean vHalt = true;
+        private volatile Boolean vStep = false;
+
         private Int16[] mCore = new Int16[CORE_SIZE];
         private Int16 mT, mA, mB, mPC, mIR, mSR, mX, mPPR, mVBR;
-        private Boolean mIOH, mOVF, mCF, mXP;
-        private volatile Boolean mHalt = true;
-        private volatile Boolean mStep = false;
+        private Boolean mOVF, mCF, mXP;
 
         private Int16[] mIntRequest = new Int16[9]; // interrupt request
         private Int16[] mIntEnabled = new Int16[9]; // interrupt enabled
@@ -69,8 +71,8 @@ namespace Emulator
 
         public Boolean IsHalted
         {
-            get { return mHalt; } // TOOD: make thread-safe
-            set { mHalt = value; } // TODO: make thread-safe
+            get { return vHalt; }
+            set { vHalt = value; }
         }
 
         public Int16 A
@@ -124,7 +126,7 @@ namespace Emulator
         public void MasterClear()
         {
             mT = mB = mA = mIR = mPC = 0;
-            mVBR = 0; // TODO: verify whether Master Clear actually clears this
+            mVBR = 0;
             ClearOVF();
             ClearCF();
         }
@@ -189,25 +191,34 @@ namespace Emulator
             if (port != -1) mIO[unit] = new NetworkDevice(destination, port);
         }
 
-        public void Start()
+        public void Run()
         {
-            mHalt = false;
+            if (vHalt) Console.Out.Write("[RUN]");
+            vHalt = false;
         }
 
-        public void Stop()
+        public void Halt()
         {
-            mHalt = true;
+            if (!vHalt) Console.Out.Write("[HALT]");
+            vHalt = true;
         }
 
         public void Step()
         {
-            mStep = true;
-            while (mStep) Thread.Sleep(50);
+            vStep = true;
+            while (vStep) Thread.Sleep(50);
         }
 
-        public void ReleaseHold()
+        private void SetIOHold()
         {
-            ClearIOH();
+            if (!vIOHold && Program.VERBOSE) Console.Out.Write("[+IOH]");
+            vIOHold = true;
+        }
+
+        public void ReleaseIOHold()
+        {
+            if (vIOHold && Program.VERBOSE) Console.Out.Write("[-IOH]");
+            vIOHold = false;
         }
 
         public void Exit()
@@ -287,16 +298,16 @@ namespace Emulator
         {
             while (true)
             {
-                while ((mHalt) && (!mStep))
+                while ((vHalt) && (!vStep))
                 {
                     Thread.Sleep(100);
                 }
-                if ((mHalt) && (mStep))
+                if ((vHalt) && (vStep))
                 {
                     StepCPU();
-                    mStep = false;
+                    vStep = false;
                 }
-                while (!mHalt)
+                while (!vHalt)
                 {
                     StepCPU();
                 }
@@ -322,7 +333,7 @@ namespace Emulator
                 {
                     case 0: // HLT - halt
                         wIR(Read(mPC));
-                        SetHalt();
+                        Halt();
                         return;
                     case 1: // RNA - round A
                         r16 = mA;
@@ -787,7 +798,7 @@ namespace Emulator
             {
                 if (mBPA[p])
                 {
-                    SetHalt();
+                    Halt();
                     Console.Out.Write("[A:{0:x4}/{1}]", value, Program.Octal(value, 6));
                 }
             }
@@ -803,7 +814,7 @@ namespace Emulator
             {
                 if (mBPB[p])
                 {
-                    SetHalt();
+                    Halt();
                     Console.Out.Write("[B:{0:x4}/{1}]", value, Program.Octal(value, 6));
                 }
             }
@@ -819,7 +830,7 @@ namespace Emulator
             {
                 if (mBPIR[p])
                 {
-                    SetHalt();
+                    Halt();
                     Console.Out.Write("[IR:{0:x4}/{1}]", value, Program.Octal(value, 6));
                 }
             }
@@ -834,7 +845,7 @@ namespace Emulator
             {
                 if (mBPPC[p])
                 {
-                    SetHalt();
+                    Halt();
                     Console.Out.Write("[PC:{0:x4}/{1}]", value, Program.Octal(value, 5));
                 }
             }
@@ -849,7 +860,7 @@ namespace Emulator
                 Int16 n = mBPR[addr];
                 if ((n == 1) || (n == -1))
                 {
-                    SetHalt();
+                    Halt();
                     Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
                 }
                 if (n > 0) mBPR[addr]--;
@@ -864,7 +875,7 @@ namespace Emulator
                 Int16 n = mBPW[addr];
                 if ((n == 1) || (n == -1))
                 {
-                    SetHalt();
+                    Halt();
                     Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
                 }
                 if (n > 0) mBPW[addr]--;
@@ -902,25 +913,6 @@ namespace Emulator
             mIntMask = 0;
         }
 
-
-        private void SetHalt()
-        {
-            if (!mHalt) Console.Out.Write("[HALT]");
-            mHalt = true;
-        }
-
-        private void SetIOH()
-        {
-            if (!mIOH && Program.VERBOSE) Console.Out.Write("[+IOH]");
-            mIOH = true;
-        }
-
-        private void ClearIOH()
-        {
-            if (mIOH && Program.VERBOSE) Console.Out.Write("[-IOH]");
-            mIOH = false;
-        }
-
         private void SetOVF()
         {
             if (!mOVF && Program.VERBOSE) Console.Out.Write("[+OVF]");
@@ -945,76 +937,76 @@ namespace Emulator
 
         private Boolean IO_Command(Int32 unit, Int16 command, Boolean wait)
         {
-            IO dev = mIO[unit];
-            if (dev == null) return false; // TODO: what if wait=true?
-            Boolean rdy = dev.CommandReady;
-            if ((!wait) && (!rdy)) return false;
+            IO device = mIO[unit];
+            if (device == null) return false; // TODO: what if wait=true?
+            Boolean ready = device.CommandReady;
+            if ((!wait) && (!ready)) return false;
             DateTime start = DateTime.Now;
-            while (!rdy)
+            while (!ready)
             {
                 Thread.Sleep(10);
-                rdy = dev.CommandReady;
+                ready = device.CommandReady;
                 if ((DateTime.Now - start) > sIndicatorLag) break;
             }
-            if (!rdy)
+            if (!ready)
             {
-                SetIOH();
-                do Thread.Sleep(50); while (mIOH && !dev.CommandReady);
-                ClearIOH();
+                SetIOHold();
+                do Thread.Sleep(50); while (vIOHold && !device.CommandReady);
+                ReleaseIOHold();
             }
-            return dev.Command(command);
+            return device.Command(command);
         }
 
         private Boolean IO_Test(Int32 unit, Int16 command)
         {
-            IO dev = mIO[unit];
-            if (dev == null) return false;
-            return dev.Test(command);
+            IO device = mIO[unit];
+            if (device == null) return false;
+            return device.Test(command);
         }
 
         private Boolean IO_Write(Int32 unit, Int16 word, Boolean wait)
         {
-            IO dev = mIO[unit];
-            if (dev == null) return false; // TODO: what if wait=true?
-            Boolean rdy = dev.WriteReady;
-            if ((!wait) && (!rdy)) return false;
+            IO device = mIO[unit];
+            if (device == null) return false; // TODO: what if wait=true?
+            Boolean ready = device.WriteReady;
+            if ((!wait) && (!ready)) return false;
             DateTime start = DateTime.Now;
-            while (!rdy)
+            while (!ready)
             {
                 Thread.Sleep(10);
-                rdy = dev.WriteReady;
+                ready = device.WriteReady;
                 if ((DateTime.Now - start) > sIndicatorLag) break;
             }
-            if (!rdy)
+            if (!ready)
             {
-                SetIOH();
-                do Thread.Sleep(20); while (mIOH && !dev.WriteReady);
-                ClearIOH();
+                SetIOHold();
+                do Thread.Sleep(20); while (vIOHold && !device.WriteReady);
+                ReleaseIOHold();
             }
-            return dev.Write(word);
+            return device.Write(word);
         }
 
         private Boolean IO_Read(Int32 unit, out Int16 word, Boolean wait)
         {
             word = 0;
-            IO dev = mIO[unit];
-            if (dev == null) return false; // TODO: what if wait=true?
-            Boolean rdy = dev.ReadReady;
-            if ((!wait) && (!rdy)) return false;
+            IO device = mIO[unit];
+            if (device == null) return false; // TODO: what if wait=true?
+            Boolean ready = device.ReadReady;
+            if ((!wait) && (!ready)) return false;
             DateTime start = DateTime.Now;
-            while (!rdy)
+            while (!ready)
             {
                 Thread.Sleep(10);
-                rdy = dev.ReadReady;
+                ready = device.ReadReady;
                 if ((DateTime.Now - start) > sIndicatorLag) break;
             }
-            if (!rdy)
+            if (!ready)
             {
-                SetIOH();
-                do Thread.Sleep(20); while (mIOH && !dev.ReadReady);
-                ClearIOH();
+                SetIOHold();
+                do Thread.Sleep(20); while (vIOHold && !device.ReadReady);
+                ReleaseIOHold();
             }
-            return dev.Read(out word);
+            return device.Read(out word);
         }
     }
 }
