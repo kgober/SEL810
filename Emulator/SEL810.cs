@@ -963,7 +963,7 @@ namespace Emulator
                     if ((n == 1) || (n == -1))
                     {
                         Halt();
-                        Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                        Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Decode(mPC, mIR));
                     }
                 }
             }
@@ -985,7 +985,7 @@ namespace Emulator
                     if ((n == 1) || (n == -1))
                     {
                         Halt();
-                        Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                        Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Decode(mPC, mIR));
                     }
                 }
             }

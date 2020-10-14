@@ -264,7 +264,7 @@ namespace Emulator
                 {
                     if (arg.Length == 0)
                     {
-                        Console.Out.WriteLine("IR:{0:X4}/{1}  {2}", CPU.IR, Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                        Console.Out.WriteLine("IR:{0:X4}/{1}  {2}", CPU.IR, Octal(CPU.IR, 6), Decode(CPU.PC, CPU.IR));
                     }
                     else if (!ParseWord(arg, out word))
                     {
@@ -273,7 +273,7 @@ namespace Emulator
                     else
                     {
                         CPU.IR = word;
-                        Console.Out.WriteLine("IR={0:X4}/{1}  {2}", CPU.IR, Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                        Console.Out.WriteLine("IR={0:X4}/{1}  {2}", CPU.IR, Octal(CPU.IR, 6), Decode(CPU.PC, CPU.IR));
                     }
                 }
                 else if (cmd[0] == 'i') // input
@@ -300,7 +300,7 @@ namespace Emulator
                 {
                     CPU.MasterClear();
                     Console.Out.WriteLine("A={0:X4}/{1}  B={2:X4}/{3}  T={4:X4}/{5}", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
-                    Console.Out.WriteLine("PC={0:X4}/{1}  IR={2:X4}/{3}  {4}", CPU.PC, Octal(CPU.PC, 5), CPU.IR, Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                    Console.Out.WriteLine("PC={0:X4}/{1}  IR={2:X4}/{3}  {4}", CPU.PC, Octal(CPU.PC, 5), CPU.IR, Octal(CPU.IR, 6), Decode(CPU.PC, CPU.IR));
                 }
                 else if (cmd[0] == 'n') // network
                 {
@@ -350,8 +350,10 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'r') // registers
                 {
+                    word = CPU.PC;
+                    if ((CPU[word] != CPU.IR) && (CPU[word - 1] == CPU.IR)) word--;
                     Console.Out.WriteLine("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
-                    Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2:X4}/{3}  {4}", CPU.PC, Octal(CPU.PC, 5), CPU.IR, Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR));
+                    Console.Out.WriteLine("PC:{0:X4}/{1}  IR:{2:X4}/{3}  {4}", CPU.PC, Octal(CPU.PC, 5), CPU.IR, Octal(CPU.IR, 6), Decode(word, CPU.IR));
                 }
                 else if (cmd[0] == 's') // step
                 {
@@ -669,7 +671,7 @@ namespace Emulator
             else if (!ParseWord(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
             if (p != -1)
             {
-                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Op(ref p, CPU[p], 20));
+                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Decode(ref p, CPU[p], 20));
                 AUTO_CMD = "unassemble";
                 DISASM_ARG = (Int16)(p % 32768);
             }
@@ -690,7 +692,7 @@ namespace Emulator
             {
                 CPU.Step();
                 Console.Out.Write("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}  ", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
-                Console.Out.Write("PC:{0:X4}/{1}  {2}  {3}  >", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Op(CPU.PC, CPU.IR, 16));
+                Console.Out.Write("PC:{0:X4}/{1}  {2}  {3}  >", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Decode(CPU.PC, CPU.IR, 16));
             }
             if (p != -1)
             {
@@ -789,26 +791,26 @@ namespace Emulator
             return String.Concat(pad, num);
         }
 
-        static public String Op(Int16 addr, Int16 word, Int32 width)
+        static public String Decode(Int16 addr, Int16 word, Int32 width)
         {
             Int16 tmp = addr;
-            return Op(ref tmp, word, width);
+            return Decode(ref tmp, word, width);
         }
 
-        static public String Op(ref Int16 addr, Int16 word, Int32 width)
+        static public String Decode(ref Int16 addr, Int16 word, Int32 width)
         {
-            String s = Op(ref addr, word);
+            String s = Decode(ref addr, word);
             if (s.Length >= width) return s;
             return String.Concat(s, new String(' ', width - s.Length));
         }
 
-        static public String Op(Int16 addr, Int16 word)
+        static public String Decode(Int16 addr, Int16 word)
         {
             Int16 tmp = addr;
-            return Op(ref tmp, word);
+            return Decode(ref tmp, word);
         }
 
-        static public String Op(ref Int16 addr, Int16 word)
+        static public String Decode(ref Int16 addr, Int16 word)
         {
             // o ooo xim aaa aaa aaa - memory reference instruction
             // o ooo xis sss aaa aaa - augmented instruction
@@ -886,6 +888,7 @@ namespace Emulator
                             case 1: return String.Format("PID{0} '{1}", I, Octal(CPU[addr++], 6));
                             default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                         }
+                    default: return String.Format("DATA  '{0}", Octal(word, 6, '0'));
                 }
             }
             else if (op == 15)
@@ -926,9 +929,9 @@ namespace Emulator
                     case 12: return String.Format("IMS{0} '{1}{2}", I, Octal(ea, 5, '0'), X);
                     case 13: return String.Format("CMA{0} '{1}{2}", I, Octal(ea, 5, '0'), X);
                     case 14: return String.Format("AMB{0} '{1}{2}", I, Octal(ea, 5, '0'), X);
+                    default: return String.Format("DATA '{0}", Octal(word, 6));
                 }
             }
-            return String.Format("DATA '{0}", Octal(word, 6));
         }
     }
 }
