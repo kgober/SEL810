@@ -38,6 +38,12 @@ namespace Emulator
         private volatile Boolean vIOHold = false;
         private volatile Boolean vInterrupt = false;
         private volatile Boolean vOverflow = false;
+        private volatile Boolean vBPR = false;
+        private volatile Boolean vBPW = false;
+        private volatile Boolean vBPA = false;
+        private volatile Boolean vBPB = false;
+        private volatile Boolean vBPIR = false;
+        private volatile Boolean vBPPC = false;
 
         private Object mLock = new Object();
         private Thread mCPUThread;
@@ -266,22 +272,44 @@ namespace Emulator
 
         public Int16 GetBPR(Int16 addr)
         {
+            if (!vBPR) return 0;
             lock (mBPR) return mBPR[addr];
         }
 
         public void SetBPR(Int16 addr, Int16 count)
         {
-            lock (mBPR) mBPR[addr] = count;
+            lock (mBPR)
+            {
+                mBPR[addr] = count;
+                for (Int32 i = 0; i < mBPR.Length; i++)
+                {
+                    if (mBPR[i] == 0) continue;
+                    vBPR = true;
+                    return;
+                }
+                vBPR = false;
+            }
         }
 
         public Int16 GetBPW(Int16 addr)
         {
+            if (!vBPR) return 0;
             lock (mBPW) return mBPW[addr];
         }
 
         public void SetBPW(Int16 addr, Int16 count)
         {
-            lock (mBPW) mBPW[addr] = count;
+            lock (mBPW)
+            {
+                mBPW[addr] = count;
+                for (Int32 i = 0; i < mBPW.Length; i++)
+                {
+                    if (mBPW[i] == 0) continue;
+                    vBPW = true;
+                    return;
+                }
+                vBPW = false;
+            }
         }
 
         public Boolean GetBPReg(Int32 index, Int32 value)
@@ -300,10 +328,10 @@ namespace Emulator
         {
             switch (index)
             {
-                case 0: mBPA[value] = true; return;
-                case 1: mBPB[value] = true; return;
-                case 2: mBPIR[value] = true; return;
-                case 3: mBPPC[value] = true; return;
+                case 0: mBPA[value] = vBPA = true; return;
+                case 1: mBPB[value] = vBPB = true; return;
+                case 2: mBPIR[value] = vBPIR = true; return;
+                case 3: mBPPC[value] = vBPPC = true; return;
             }
         }
 
@@ -359,13 +387,13 @@ namespace Emulator
                         wIR(Read(mPC));
                         Halt();
                         return;
-                    case 1: // RNA - round A
+                    case 1: // 00-01 RNA - round A
                         r16 = mA;
                         if ((mB & 0x4000) != 0) r16++;
                         if ((r16 == 0) && (mA != 0)) SetOverflow();
                         wA(r16);
                         break;
-                    case 2: // NEG - negate A
+                    case 2: // 00-02 NEG - negate A
                         if (mA == -32768) SetOverflow();
                         wA((Int16)(-mA - ((mCF) ? 1 : 0)));
                         break;
@@ -378,12 +406,12 @@ namespace Emulator
                     case 5: // TAB - transfer A to B
                         wB(mA);
                         break;
-                    case 6: // IAB - interchange A and B
-                        r16 = mA;
+                    case 6: // 00-06 IAB - interchange A and B
+                        mT = mA;
                         wA(mB);
-                        wB(r16);
+                        wB(mT);
                         break;
-                    case 7: // CSB - copy sign of B
+                    case 7: // 00-07 CSB - copy sign of B
                         if (mB < 0)
                         {
                             mCF = true; // TODO: find out exactly which instructions CF affects
@@ -440,7 +468,7 @@ namespace Emulator
                     case 16: // ASC - complement sign of accumulator
                         wA(mA ^= -32768);
                         break;
-                    case 17: // SAS - skip on accumulator sign
+                    case 17: // 00-21 SAS - skip on accumulator sign
                         if (mA > 0) ++mPC;
                         if (mA >= 0) ++mPC;
                         break;
@@ -453,7 +481,7 @@ namespace Emulator
                     case 20: // SAP - skip if accumulator positive
                         if (mA >= 0) ++mPC;
                         break;
-                    case 21: // SOF - skip if no overflow
+                    case 21: // 00-25 SOF - skip if no overflow
                         if (vOverflow) ClearOverflow();
                         else ++mPC;
                         break;
@@ -461,36 +489,37 @@ namespace Emulator
                         wB(++mB);
                         if (mB >= 0) ++mPC;
                         break;
-                    case 23: // ABA - and B and A accumulators
+                    case 23: // 00-27 ABA - and B and A accumulators
                         wA((Int16)(mA & mB));
                         break;
-                    case 24: // OBA - or B and A accumulators
+                    case 24: // 00-30 OBA - or B and A accumulators
                         wA((Int16)(mA | mB));
                         break;
-                    case 25: // LCS - load control switches
-                        wA(mSR);
+                    case 25: // 00-31 LCS - load control switches
+                        mT = mSR;
+                        wA(mT);
                         break;
-                    case 26: // SNO - skip normalized accumulator
+                    case 26: // 00-32 SNO - skip normalized accumulator
                         if ((mA & 0x8000) != ((mA << 1) & 0x8000)) ++mPC;
                         break;
                     case 27: // NOP - no operation
                         break;
-                    case 28: // CNS - convert number system
+                    case 28: // 00-34 CNS - convert number system
                         if (mA == -32768) SetOverflow();
                         if (mA < 0) wA((Int16)(-mA | -32768));
                         break;
-                    case 29: // TOI - turn off interrupt
+                    case 29: // 00-35 TOI - turn off interrupt
                         mIntBlocked = true;
                         mTOI = true;
                         break;
-                    case 30: // LOB - long branch
+                    case 30: // 00-36 LOB - long branch
                         wPC(++mPC);
                         mT = Read(mPC);
                         wPC((Int16)(mT & 0x7fff));
                         PC_inc = 0;
                         if (mTOI) DoTOI();
                         break;
-                    case 31: // OVS - set overflow
+                    case 31: // 00-37 OVS - set overflow
                         SetOverflow();
                         break;
                     case 32: // TBP - transfer B to protect register
@@ -528,10 +557,10 @@ namespace Emulator
                     case 39: // XPB - set index pointer to B
                         mXP = false;
                         break;
-                    case 40: // SXB - skip if index register is B
+                    case 40: // 00-50 SXB - skip if index register is B
                         if (!mXP) ++mPC;
                         break;
-                    case 41: // IXS - increment index and skip if positive
+                    case 41: // 00-N-51 IXS - increment index and skip if positive
                         mX += (Int16)(sc);
                         if (mX >= 0) ++mPC;
                         break;
@@ -541,6 +570,7 @@ namespace Emulator
                     case 43: // TXA - transfer index register to A
                         wA(mX);
                         break;
+                    case 44: // RTX
                     default: // TODO: what do undefined opcodes do?
                         break;
                 }
@@ -571,12 +601,13 @@ namespace Emulator
                         mT = Read(ea);
                         if (IO_Test(unit, mT)) ++mPC;
                         break;
-                    case 4: // SNS - sense numbered switch
+                    case 4: // 13-04-N SNS - sense numbered switch
                         unit &= 15;
-                        if (((mSR << unit) & 0x8000) == 0) ++mPC;
+                        mT = mSR;
+                        if (((mT << unit) & 0x8000) == 0) ++mPC;
                         break;
                     case 6:
-                        if (unit == 0) // PIE - priority interrupt enable
+                        if (unit == 0) // 130600 PIE - priority interrupt enable
                         {
                             mT = Read(wPC(++mPC));
                             unit = mT & 0x7000;
@@ -652,7 +683,7 @@ namespace Emulator
                 Boolean x = ((mIR & 0x800) != 0); // X flag
                 i = ((mIR & 0x400) != 0); // I flag
                 m = ((mIR & 0x200) != 0); // M flag
-                ea = mIR & 511;
+                ea = mIR & 511; // TODO: should be mT & 511, verify that this works
                 if (m) ea |= mPC & 0x7e00;
                 if (x) ea += (mXP) ? mX : mB;
                 if (!m && !x) ea |= mVBR & 0x7e00;
@@ -666,7 +697,7 @@ namespace Emulator
                 }
                 switch (op)
                 {
-                    case 1: // LAA - load A accumulator
+                    case 1: // 01 LAA - load A accumulator
                         mT = Read(ea);
                         wA(mT);
                         break;
@@ -680,55 +711,55 @@ namespace Emulator
                     case 4: // STB - store B accumulator
                         Write(ea, mB);
                         break;
-                    case 5: // AMA - add memory to A
+                    case 5: // 05 AMA - add memory to A
                         mT = Read(ea);
                         r16 = (Int16)(mA + mT + ((mCF) ? 1 : 0));
                         if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOverflow();
                         wA(r16);
                         break;
-                    case 6: // SMA - subtract memory from A
+                    case 6: // 06 SMA - subtract memory from A
                         mT = Read(ea);
                         r16 = (Int16)(mA - mT - ((mCF) ? 1 : 0));
                         if (((mA & 0x8000) != (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOverflow();
                         wA(r16);
                         break;
-                    case 7: // MPY - multiply
+                    case 7: // 07 MPY - multiply
                         mT = Read(ea);
                         r32 = mT * mB;
                         if ((mT == -32768) && (mB == -32768)) SetOverflow();
                         wB((Int16)(r32 & 0x7fff));
                         wA((Int16)((r32 >> 15) & 0xffff));
                         break;
-                    case 8: // DIV - divide
+                    case 8: // 10 DIV - divide
                         mT = Read(ea);
                         r32 = (mA <<  15) | (mB & 0x7fff);
                         if (mA >= mT) SetOverflow();
                         wB((Int16)(r32 % mT));
                         wA((Int16)(r32 / mT));
                         break;
-                    case 9: // BRU - branch unconditional
+                    case 9: // 11 BRU - branch unconditional
                         wPC((Int16)(ea));
                         PC_inc = 0;
                         if ((mTOI) && ((mIR & 0x400) != 0)) DoTOI();
                         break;
-                    case 10: // SPB - store place and branch
-                        Write(ea, ++mPC);
+                    case 10: // 12 SPB - store place and branch
+                        Write(ea, (Int16)(++mPC & 0x3fff)); // save only 14 bits, BRU* will see high bits as X=0 I=0
                         wPC((Int16)(ea));
                         mIntBlocked = true;
                         break;
-                    case 12: // IMS - increment memory and skip
-                        mT = Read(ea);
-                        Write(ea, ++mT);
-                        if (mT == 0) ++mPC;
+                    case 12: // 14 IMS - increment memory and skip
+                        r16 = mT = Read(ea);
+                        Write(ea, ++r16);
+                        if (r16 == 0) ++mPC;
                         break;
-                    case 13: // CMA - compare memory and accumulator
+                    case 13: // 15 CMA - compare memory and accumulator
                         mT = Read(ea);
                         if (mA > mT) ++mPC;
                         if (mA >= mT) ++mPC;
                         break;
-                    case 14: // AMB - add memory to B
+                    case 14: // 16 AMB - add memory to B
                         mT = Read(ea);
-                        r16 = (Int16)(mB + mT);
+                        r16 = (Int16)(mB + mT + ((mCF) ? 1 : 0));
                         if (((mB & 0x8000) == (mT & 0x8000)) && ((mB & 0x8000) != (r16 & 0x8000))) SetOverflow();
                         wB(r16);
                         break;
@@ -736,7 +767,8 @@ namespace Emulator
             }
             if (mIR != 7) mCF = false;
             if (PC_inc != 0) wPC(mPC += PC_inc);
-            wIR(Read(mPC));
+            mT = Read(mPC);
+            wIR(mT);
         }
 
         private Int16 Indirect(Int16 addr, Boolean M)
@@ -847,81 +879,92 @@ namespace Emulator
 
         private Int16 wA(Int16 value)
         {
-            Int32 p = value & 0x7fff;
-            if (value < 0) p += 32768;
-            lock (mBPA)
+            if (vBPA)
             {
-                if (mBPA[p])
+                Int32 p = value & 0x7fff;
+                if (value < 0) p += 32768;
+                lock (mBPA)
                 {
-                    Halt();
-                    Console.Out.Write("[A:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                    if (mBPA[p])
+                    {
+                        Halt();
+                        Console.Out.Write("[A:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                    }
                 }
             }
-            mA = value;
-            return value;
+            return mA = value;
         }
 
         private Int16 wB(Int16 value)
         {
-            Int32 p = value & 0x7fff;
-            if (value < 0) p += 32768;
-            lock (mBPB)
+            if (vBPB)
             {
-                if (mBPB[p])
+                Int32 p = value & 0x7fff;
+                if (value < 0) p += 32768;
+                lock (mBPB)
                 {
-                    Halt();
-                    Console.Out.Write("[B:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                    if (mBPB[p])
+                    {
+                        Halt();
+                        Console.Out.Write("[B:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                    }
                 }
             }
-            mB = value;
-            return value;
+            return mB = value;
         }
 
         private Int16 wIR(Int16 value)
         {
-            Int32 p = value & 0x7fff;
-            if (value < 0) p += 32768;
-            lock (mBPIR)
+            if (vBPIR)
             {
-                if (mBPIR[p])
+                Int32 p = value & 0x7fff;
+                if (value < 0) p += 32768;
+                lock (mBPIR)
                 {
-                    Halt();
-                    Console.Out.Write("[IR:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                    if (mBPIR[p])
+                    {
+                        Halt();
+                        Console.Out.Write("[IR:{0:x4}/{1}]", value, Program.Octal(value, 6));
+                    }
                 }
             }
-            mIR = value;
-            return value;
+            return mIR = value;
         }
 
         private Int16 wPC(Int16 value)
         {
-            Int32 p = value & 0x7fff;
-            lock (mBPPC)
+            if (vBPPC)
             {
-                if (mBPPC[p])
+                Int32 p = value & 0x7fff;
+                lock (mBPPC)
                 {
-                    Halt();
-                    Console.Out.Write("[PC:{0:x4}/{1}]", value, Program.Octal(value, 5));
+                    if (mBPPC[p])
+                    {
+                        Halt();
+                        Console.Out.Write("[PC:{0:x4}/{1}]", value, Program.Octal(value, 5));
+                    }
                 }
             }
-            mPC = value;
-            return value;
+            return mPC = value;
         }
 
         private Int16 Read(Int32 addr)
         {
-            Int16 n = mBPR[addr];
-            if (n != 0)
+            if (vBPR)
             {
-                lock (mBPR)
+                Int16 n = mBPR[addr];
+                if (n != 0)
                 {
-                    n = mBPR[addr];
-                    if (n > 0) mBPR[addr]--;
-                }
-                if ((n == 1) || (n == -1))
-                {
-                    Halt();
-                    Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                    lock (mBPR)
+                    {
+                        n = mBPR[addr];
+                        if (n > 0) mBPR[addr]--;
+                    }
+                    if ((n == 1) || (n == -1))
+                    {
+                        Halt();
+                        Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                    }
                 }
             }
             return mCore[addr];
@@ -929,18 +972,21 @@ namespace Emulator
 
         private Int16 Write(Int32 addr, Int16 value)
         {
-            Int16 n = mBPW[addr];
-            if (n != 0)
+            if (vBPW)
             {
-                lock (mBPW)
+                Int16 n = mBPW[addr];
+                if (n != 0)
                 {
-                    n = mBPW[addr];
-                    if (n > 0) mBPW[addr]--;
-                }
-                if ((n == 1) || (n == -1))
-                {
-                    Halt();
-                    Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                    lock (mBPW)
+                    {
+                        n = mBPW[addr];
+                        if (n > 0) mBPW[addr]--;
+                    }
+                    if ((n == 1) || (n == -1))
+                    {
+                        Halt();
+                        Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
+                    }
                 }
             }
             return mCore[addr] = value;

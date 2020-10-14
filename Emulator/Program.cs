@@ -20,6 +20,10 @@
 // SOFTWARE.
 
 
+// To Do:
+// * Auto Start: see p.64 of http://vtda.org/docs/computing/SEL/SEL_810ASchool_1971.pdf
+
+
 using System;
 using System.IO;
 
@@ -82,7 +86,7 @@ namespace Emulator
                     Console.Out.WriteLine("u[nassemble] [addr] - display instruction at 'addr' (Enter to continue)");
                     Console.Out.WriteLine("v[erbose] - toggle verbose mode (shows OVF and IOH indicators)");
                     Console.Out.WriteLine("w[rite] addr len filename - write 'len' words at 'addr' to 'filename'");
-                    Console.Out.WriteLine("= [addr] [val] - write 'val' to 'addr' (Enter to continue)");
+                    Console.Out.WriteLine("= [addr] val - write 'val' to 'addr' (Enter to continue)");
                     Console.Out.WriteLine(". [addr [count]] - set a read breakpoint at 'addr'");
                     Console.Out.WriteLine("! [addr [count]] - set a write breakpoint at 'addr'");
                     Console.Out.WriteLine("<reg>+ val - set a breakpoint on <reg> = 'val'");
