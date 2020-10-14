@@ -33,16 +33,18 @@ namespace Emulator
 
         private static TimeSpan sIndicatorLag = new TimeSpan(0, 0, 0, 0, 200);
 
+        private volatile Boolean vStep = false;
+        private volatile Boolean vHalt = true;
+        private volatile Boolean vIOHold = false;
+        private volatile Boolean vInterrupt = false;
+        private volatile Boolean vOverflow = false;
+
         private Object mLock = new Object();
         private Thread mCPUThread;
 
-        private volatile Boolean vIOHold = false;
-        private volatile Boolean vHalt = true;
-        private volatile Boolean vStep = false;
-
         private Int16[] mCore = new Int16[CORE_SIZE];
         private Int16 mT, mA, mB, mPC, mIR, mSR, mX, mPPR, mVBR;
-        private Boolean mOVF, mCF, mXP;
+        private Boolean mCF, mXP;
 
         private Int16[] mIntRequest = new Int16[9]; // interrupt request
         private Int16[] mIntEnabled = new Int16[9]; // interrupt enabled
@@ -127,8 +129,8 @@ namespace Emulator
         {
             mT = mB = mA = mIR = mPC = 0;
             mVBR = 0;
-            ClearOVF();
-            ClearCF();
+            ClearOverflow();
+            mCF = false;
         }
 
         public void Load(Int32 loadAddress, String imageFile)
@@ -145,10 +147,10 @@ namespace Emulator
         {
             while (count-- > 0)
             {
-                Int16 word = (Int16)(bytesToLoad[offset++] << 8);
-                if (count-- > 0) word += bytesToLoad[offset++];
+                Int32 word = bytesToLoad[offset++] << 8;
+                if (count-- > 0) word |= bytesToLoad[offset++];
                 loadAddress %= CORE_SIZE;
-                mCore[loadAddress++] = word;
+                mCore[loadAddress++] = (Int16)(word);
             }
         }
 
@@ -166,11 +168,13 @@ namespace Emulator
 
         public void AttachDevice(Int16 unit, String destination)
         {
-            if (mIO[unit] != null)
+            IO device;
+            lock (mIO)
             {
-                mIO[unit].Exit();
+                device = mIO[unit];
                 mIO[unit] = null;
             }
+            if (device != null) device.Exit();
             if ((destination == null) || (destination.Length == 0)) return;
             Int32 port;
             Int32 p = destination.IndexOf(':');
@@ -181,14 +185,15 @@ namespace Emulator
             else if (!Int32.TryParse(destination.Substring(p + 1), out port))
             {
                 Console.Out.WriteLine("Unrecognized TCP port: {0}", destination.Substring(p + 1));
-                port = -1;
+                return;
             }
             else if ((port < 1) || (port > 65535))
             {
                 Console.Out.WriteLine("Unrecognized TCP port: {0}", destination.Substring(p + 1));
-                port = -1;
+                return;
             }
-            if (port != -1) mIO[unit] = new NetworkDevice(destination, port);
+            device = new NetworkDevice(destination, port);
+            lock (mIO) mIO[unit] = device;
         }
 
         public void Run()
@@ -221,43 +226,62 @@ namespace Emulator
             vIOHold = false;
         }
 
+        private void SetInterrupt()
+        {
+            if (!vInterrupt && Program.VERBOSE) Console.Out.Write("[+INT]");
+            vInterrupt = true;
+        }
+
+        private void ClearInterrupt()
+        {
+            if (vInterrupt && Program.VERBOSE) Console.Out.Write("[-INT]");
+            vInterrupt = false;
+        }
+
+        private void SetOverflow()
+        {
+            if (!vOverflow && Program.VERBOSE) Console.Out.Write("[+OVF]");
+            vOverflow = true;
+        }
+
+        private void ClearOverflow()
+        {
+            if (vOverflow && Program.VERBOSE) Console.Out.Write("[-OVF]");
+            vOverflow = false;
+        }
+
         public void Exit()
         {
-            for (Int32 i = 0; i < mIO.Length; i++) if (mIO[i] != null) mIO[i].Exit();
+            lock (mIO)
+            {
+                for (Int32 i = 0; i < mIO.Length; i++)
+                {
+                    if (mIO[i] != null) mIO[i].Exit();
+                    mIO[i] = null;
+                }
+            }
             mCPUThread.Abort();
             mCPUThread.Join();
         }
 
         public Int16 GetBPR(Int16 addr)
         {
-            lock (mBPR)
-            {
-                return mBPR[addr];
-            }
+            lock (mBPR) return mBPR[addr];
         }
 
         public void SetBPR(Int16 addr, Int16 count)
         {
-            lock (mBPR)
-            {
-                mBPR[addr] = count;
-            }
+            lock (mBPR) mBPR[addr] = count;
         }
 
         public Int16 GetBPW(Int16 addr)
         {
-            lock (mBPW)
-            {
-                return mBPW[addr];
-            }
+            lock (mBPW) return mBPW[addr];
         }
 
         public void SetBPW(Int16 addr, Int16 count)
         {
-            lock (mBPW)
-            {
-                mBPW[addr] = count;
-            }
+            lock (mBPW) mBPW[addr] = count;
         }
 
         public Boolean GetBPReg(Int32 index, Int32 value)
@@ -302,14 +326,16 @@ namespace Emulator
                 {
                     Thread.Sleep(100);
                 }
-                if ((vHalt) && (vStep))
+                if (vStep)
                 {
                     StepCPU();
+                    StepInterrupts();
                     vStep = false;
                 }
                 while (!vHalt)
                 {
                     StepCPU();
+                    StepInterrupts();
                 }
             }
         }
@@ -319,16 +345,14 @@ namespace Emulator
             // o ooo xim aaa aaa aaa - memory reference instruction
             // o ooo xis sss aaa aaa - augmented instruction
             Int16 r16;
-            Int32 r32;
-            Int32 ea;
-            Boolean fPC = false;
+            Int32 r32, ea;
+            Boolean i, m;
+            Int16 PC_inc = 1;
             Int32 op = (mIR >> 12) & 15;
-            if (op == 0)
+            if (op == 0) // augmented 00 instructions
             {
                 Int32 aug = mIR & 63;
                 Int32 sc = (mIR >> 6) & 15;
-                Boolean m = ((mIR & 0x200) != 0); // M flag
-                Boolean i = ((mIR & 0x400) != 0); // I flag
                 switch (aug)
                 {
                     case 0: // HLT - halt
@@ -338,11 +362,11 @@ namespace Emulator
                     case 1: // RNA - round A
                         r16 = mA;
                         if ((mB & 0x4000) != 0) r16++;
-                        if ((r16 == 0) && (mA != 0)) SetOVF();
+                        if ((r16 == 0) && (mA != 0)) SetOverflow();
                         wA(r16);
                         break;
                     case 2: // NEG - negate A
-                        if (mA == -32768) SetOVF();
+                        if (mA == -32768) SetOverflow();
                         wA((Int16)(-mA - ((mCF) ? 1 : 0)));
                         break;
                     case 3: // CLA - clear A
@@ -430,7 +454,7 @@ namespace Emulator
                         if (mA >= 0) ++mPC;
                         break;
                     case 21: // SOF - skip if no overflow
-                        if (mOVF) ClearOVF();
+                        if (vOverflow) ClearOverflow();
                         else ++mPC;
                         break;
                     case 22: // IBS - increment B and skip
@@ -452,7 +476,7 @@ namespace Emulator
                     case 27: // NOP - no operation
                         break;
                     case 28: // CNS - convert number system
-                        if (mA == -32768) SetOVF();
+                        if (mA == -32768) SetOverflow();
                         if (mA < 0) wA((Int16)(-mA | -32768));
                         break;
                     case 29: // TOI - turn off interrupt
@@ -463,11 +487,11 @@ namespace Emulator
                         wPC(++mPC);
                         mT = Read(mPC);
                         wPC((Int16)(mT & 0x7fff));
-                        fPC = true;
+                        PC_inc = 0;
                         if (mTOI) DoTOI();
                         break;
                     case 31: // OVS - set overflow
-                        SetOVF();
+                        SetOverflow();
                         break;
                     case 32: // TBP - transfer B to protect register
                         mPPR = mB;
@@ -482,12 +506,16 @@ namespace Emulator
                         wB(mVBR);
                         break;
                     case 36: // STX - store index
+                        i = ((mIR & 0x400) != 0); // I flag
+                        m = ((mIR & 0x200) != 0); // M flag
                         wPC(++mPC);
                         if (!i) ea = mPC;
                         else ea = Indirect(mPC, m);
                         Write(ea, mX);
                         break;
                     case 37: // LIX - load index
+                        i = ((mIR & 0x400) != 0); // I flag
+                        m = ((mIR & 0x200) != 0); // M flag
                         wPC(++mPC);
                         if (!i) ea = mPC;
                         else ea = Indirect(mPC, m);
@@ -517,32 +545,29 @@ namespace Emulator
                         break;
                 }
             }
-            else if (op == 11)
+            else if (op == 11) // augmented 13 instructions
             {
                 Int32 aug = (mIR >> 6) & 7;
                 Int32 unit = mIR & 0x3f;
-                Boolean m = ((mIR & 0x200) != 0); // M flag
-                Boolean i = ((mIR & 0x400) != 0); // I flag
+                i = ((mIR & 0x400) != 0); // I flag
+                m = ((mIR & 0x200) != 0); // M flag
                 switch (aug)
                 {
                     case 0: // CEU - command external unit (skip mode)
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         mT = Read(ea);
                         if (IO_Command(unit, mT, false)) ++mPC;
                         break;
                     case 1: // CEU - command external unit (wait mode)
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         mT = Read(ea);
                         IO_Command(unit, mT, true);
                         break;
                     case 2: // TEU - test external unit
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         mT = Read(ea);
                         if (IO_Test(unit, mT)) ++mPC;
                         break;
@@ -568,13 +593,13 @@ namespace Emulator
                         break;
                 }
             }
-            else if (op == 15)
+            else if (op == 15) // augmented 17 instructions
             {
                 Int32 aug = (mIR >> 6) & 7;
                 Int32 unit = mIR & 0x3f;
-                Boolean m = ((mIR & 0x200) != 0); // M flag
-                Boolean i = ((mIR & 0x400) != 0); // I flag
                 Boolean r = ((mIR & 0x800) != 0); // R flag
+                i = ((mIR & 0x400) != 0); // I flag
+                m = ((mIR & 0x200) != 0); // M flag
                 switch (aug)
                 {
                     case 0: // AOP - accumulator output to peripheral (skip mode)
@@ -598,29 +623,25 @@ namespace Emulator
                         break;
                     case 4: // MOP - memory output to peripheral (skip mode)
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         mT = Read(ea);
                         if (IO_Write(unit, mT, false)) ++mPC;
                         break;
                     case 5: // MOP - memory output to peripheral (wait mode)
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         mT = Read(ea);
                         IO_Write(unit, mT, true);
                         break;
                     case 6: // MIP - memory input from peripheral (skip mode)
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         if (IO_Read(unit, out r16, false)) ++mPC;
                         Write(ea, r16);
                         break;
                     case 7: // MIP - memory input from peripheral (wait mode)
                         wPC(++mPC);
-                        if (!i) ea = mPC;
-                        else ea = Indirect(mPC, m);
+                        ea = (i) ? Indirect(mPC, m) : mPC;
                         IO_Read(unit, out r16, true);
                         Write(ea, r16);
                         break;
@@ -628,18 +649,18 @@ namespace Emulator
             }
             else
             {
-                ea = mIR & 511;
                 Boolean x = ((mIR & 0x800) != 0); // X flag
-                Boolean i = ((mIR & 0x400) != 0); // I flag
-                Boolean m = ((mIR & 0x200) != 0); // M flag
+                i = ((mIR & 0x400) != 0); // I flag
+                m = ((mIR & 0x200) != 0); // M flag
+                ea = mIR & 511;
                 if (m) ea |= mPC & 0x7e00;
                 if (x) ea += (mXP) ? mX : mB;
                 if (!m && !x) ea |= mVBR & 0x7e00;
                 while (i)
                 {
                     mT = Read(ea);
-                    i = ((mT & 0x4000) != 0);
                     x = ((mT & 0x8000) != 0);
+                    i = ((mT & 0x4000) != 0);
                     ea = (mPC & 0x4000) | (mT & 0x3fff);
                     if (x) ea += (mXP) ? mX : mB;
                 }
@@ -662,32 +683,32 @@ namespace Emulator
                     case 5: // AMA - add memory to A
                         mT = Read(ea);
                         r16 = (Int16)(mA + mT + ((mCF) ? 1 : 0));
-                        if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
+                        if (((mA & 0x8000) == (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOverflow();
                         wA(r16);
                         break;
                     case 6: // SMA - subtract memory from A
                         mT = Read(ea);
                         r16 = (Int16)(mA - mT - ((mCF) ? 1 : 0));
-                        if (((mA & 0x8000) != (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOVF();
+                        if (((mA & 0x8000) != (mT & 0x8000)) && ((mA & 0x8000) != (r16 & 0x8000))) SetOverflow();
                         wA(r16);
                         break;
                     case 7: // MPY - multiply
                         mT = Read(ea);
                         r32 = mT * mB;
-                        if ((mT == -32768) && (mB == -32768)) SetOVF();
+                        if ((mT == -32768) && (mB == -32768)) SetOverflow();
                         wB((Int16)(r32 & 0x7fff));
                         wA((Int16)((r32 >> 15) & 0xffff));
                         break;
                     case 8: // DIV - divide
                         mT = Read(ea);
                         r32 = (mA <<  15) | (mB & 0x7fff);
-                        if (mA >= mT) SetOVF();
+                        if (mA >= mT) SetOverflow();
                         wB((Int16)(r32 % mT));
                         wA((Int16)(r32 / mT));
                         break;
                     case 9: // BRU - branch unconditional
                         wPC((Int16)(ea));
-                        fPC = true;
+                        PC_inc = 0;
                         if ((mTOI) && ((mIR & 0x400) != 0)) DoTOI();
                         break;
                     case 10: // SPB - store place and branch
@@ -708,22 +729,71 @@ namespace Emulator
                     case 14: // AMB - add memory to B
                         mT = Read(ea);
                         r16 = (Int16)(mB + mT);
-                        if (((mB & 0x8000) == (mT & 0x8000)) && ((mB & 0x8000) != (r16 & 0x8000))) SetOVF();
+                        if (((mB & 0x8000) == (mT & 0x8000)) && ((mB & 0x8000) != (r16 & 0x8000))) SetOverflow();
                         wB(r16);
                         break;
                 }
             }
             if (mIR != 7) mCF = false;
-            if (!fPC) wPC(++mPC);
+            if (PC_inc != 0) wPC(mPC += PC_inc);
             wIR(Read(mPC));
+        }
 
-            // check for interrupt requests
-            for (Int32 i = 0; i < mIO.Length; i++)
+        private Int16 Indirect(Int16 addr, Boolean M)
+        {
+            Boolean x, i;
+            Int32 ea = addr;
+            do
             {
-                if (mIO[i] == null) continue;
-                Int16[] IRQ = mIO[i].Interrupts;
+                mT = Read(ea);
+                x = ((mT & 0x8000) != 0);
+                i = ((mT & 0x4000) != 0);
+                ea = mT & 0x3fff;
+                if (M) ea |= mPC & 0x4000;
+                if (x) ea += (mXP) ? mX : mB;
+            }
+            while (i);
+            return (Int16)(ea);
+        }
+
+        private void DoTOI()
+        {
+            Int16 mask = (Int16)(~mIntMask);
+            mIntActive[mIntGroup] &= mask;
+            mIntRequest[mIntGroup] &= mask;
+            mTOI = false;
+            for (Int32 i = 0; i < 8; i++)
+            {
+                if (mIntActive[i] == 0) continue;
+                Int16 A = mIntActive[i];
+                mask = 0x800;
+                Int16 lev = 1;
+                while (mask != 0)
+                {
+                    if ((A & mask) != 0) break;
+                    mask >>= 1;
+                    lev++;
+                }
+                mIntGroup = i;
+                mIntLevel = lev;
+                mIntMask = mask;
+                return;
+            }
+            mIntGroup = 8;
+            mIntLevel = 0;
+            mIntMask = 0;
+            ClearInterrupt();
+        }
+
+        private void StepInterrupts()
+        {
+            // check for interrupt requests
+            for (Int32 unit = 0; unit < mIO.Length; unit++)
+            {
+                if (mIO[unit] == null) continue;
+                Int16[] IRQ = mIO[unit].Interrupts;
                 if (IRQ == null) continue;
-                for (Int32 j = 0; j < 8; j++) if (IRQ[j] != 0) mIntRequest[j] |= IRQ[j];
+                for (Int32 g = 0; g < 8; g++) if (IRQ[g] != 0) mIntRequest[g] |= IRQ[g];
             }
 
             // check whether to trigger an interrupt
@@ -733,14 +803,14 @@ namespace Emulator
             }
             else
             {
-                for (Int32 i = 0; i <= mIntGroup; i++)
+                for (Int32 g = 0; g <= mIntGroup; g++)
                 {
-                    Int16 mask = (Int16)(mIntRequest[i] & mIntEnabled[i]);
+                    Int16 mask = (Int16)(mIntRequest[g] & mIntEnabled[g]);
                     if (mask == 0) continue;
-                    if ((i < mIntGroup) || ((mask & ~mIntMask) > mIntMask))
+                    if ((g < mIntGroup) || ((mask & ~mIntMask) > mIntMask))
                     {
                         // set new active interrupt group/level
-                        mIntGroup = i;
+                        mIntGroup = g;
                         mIntMask = 0x800;
                         while (mIntMask > 0)
                         {
@@ -750,7 +820,7 @@ namespace Emulator
                         mIntActive[mIntGroup] |= mIntMask;
 
                         // select interrupt vector
-                        ea = 514 + mIntGroup * 16;
+                        Int32 ea = 514 + mIntGroup * 16;
                         if (mIntGroup > 2) ea += 16; // skip '1060 range used by BTC
                         mask = mIntMask;
                         mIntLevel = 1;
@@ -760,7 +830,7 @@ namespace Emulator
                             ea++;
                             mask <<= 1;
                         }
-                        Console.Out.Write("[+I{0:D2}]", mIntGroup * 12 + mIntLevel);
+                        SetInterrupt();
 
                         // execute SPB* instruction
                         mT = Read(ea);
@@ -773,21 +843,6 @@ namespace Emulator
                     }
                 }
             }
-        }
-
-        private Int16 Indirect(Int16 addr, Boolean M)
-        {
-            Boolean x, i;
-            do
-            {
-                mT = Read(addr);
-                x = ((mT & 0x8000) != 0);
-                i = ((mT & 0x4000) != 0);
-                addr = (Int16)((mT & 0x3fff) | ((M) ? mPC & 0x4000 : 0));
-                if (x) addr += (mXP) ? mX : mB;
-            }
-            while (i);
-            return addr;
         }
 
         private Int16 wA(Int16 value)
@@ -855,84 +910,47 @@ namespace Emulator
 
         private Int16 Read(Int32 addr)
         {
-            lock (mBPR)
+            Int16 n = mBPR[addr];
+            if (n != 0)
             {
-                Int16 n = mBPR[addr];
+                lock (mBPR)
+                {
+                    n = mBPR[addr];
+                    if (n > 0) mBPR[addr]--;
+                }
                 if ((n == 1) || (n == -1))
                 {
                     Halt();
                     Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
                 }
-                if (n > 0) mBPR[addr]--;
             }
             return mCore[addr];
         }
 
         private Int16 Write(Int32 addr, Int16 value)
         {
-            lock (mBPW)
+            Int16 n = mBPW[addr];
+            if (n != 0)
             {
-                Int16 n = mBPW[addr];
+                lock (mBPW)
+                {
+                    n = mBPW[addr];
+                    if (n > 0) mBPW[addr]--;
+                }
                 if ((n == 1) || (n == -1))
                 {
                     Halt();
                     Console.Out.Write("[PC:{0} IR:{1} {2}]", Program.Octal(mPC, 5), Program.Octal(mIR, 6), Program.Op(mPC, mIR));
                 }
-                if (n > 0) mBPW[addr]--;
             }
-            mCore[addr] = value;
-            return value;
+            return mCore[addr] = value;
         }
 
-        private void DoTOI()
+        private Boolean IO_Test(Int32 unit, Int16 command)
         {
-            Int16 mask = (Int16)(~mIntMask);
-            mIntActive[mIntGroup] &= mask;
-            mIntRequest[mIntGroup] &= mask;
-            Console.Out.Write("[-I{0:D2}]", mIntGroup * 12 + mIntLevel);
-            mTOI = false;
-            for (Int32 i = 0; i < 8; i++)
-            {
-                if (mIntActive[i] == 0) continue;
-                Int16 A = mIntActive[i];
-                mask = 0x800;
-                Int16 lev = 1;
-                while (mask != 0)
-                {
-                    if ((A & mask) != 0) break;
-                    mask >>= 1;
-                    lev++;
-                }
-                mIntGroup = i;
-                mIntLevel = lev;
-                mIntMask = mask;
-                return;
-            }
-            mIntGroup = 8;
-            mIntLevel = 0;
-            mIntMask = 0;
-        }
-
-        private void SetOVF()
-        {
-            if (!mOVF && Program.VERBOSE) Console.Out.Write("[+OVF]");
-            mOVF = true;
-        }
-
-        private void ClearOVF()
-        {
-            if (mOVF && Program.VERBOSE) Console.Out.Write("[-OVF]");
-            mOVF = false;
-        }
-
-        private void SetCF()
-        {
-            mCF = true;
-        }
-
-        private void ClearCF()
-        {
-            mCF = false;
+            IO device = mIO[unit];
+            if (device == null) return false;
+            return device.Test(command);
         }
 
         private Boolean IO_Command(Int32 unit, Int16 command, Boolean wait)
@@ -957,11 +975,27 @@ namespace Emulator
             return device.Command(command);
         }
 
-        private Boolean IO_Test(Int32 unit, Int16 command)
+        private Boolean IO_Read(Int32 unit, out Int16 word, Boolean wait)
         {
+            word = 0;
             IO device = mIO[unit];
-            if (device == null) return false;
-            return device.Test(command);
+            if (device == null) return false; // TODO: what if wait=true?
+            Boolean ready = device.ReadReady;
+            if ((!wait) && (!ready)) return false;
+            DateTime start = DateTime.Now;
+            while (!ready)
+            {
+                Thread.Sleep(10);
+                ready = device.ReadReady;
+                if ((DateTime.Now - start) > sIndicatorLag) break;
+            }
+            if (!ready)
+            {
+                SetIOHold();
+                do Thread.Sleep(20); while (vIOHold && !device.ReadReady);
+                ReleaseIOHold();
+            }
+            return device.Read(out word);
         }
 
         private Boolean IO_Write(Int32 unit, Int16 word, Boolean wait)
@@ -984,29 +1018,6 @@ namespace Emulator
                 ReleaseIOHold();
             }
             return device.Write(word);
-        }
-
-        private Boolean IO_Read(Int32 unit, out Int16 word, Boolean wait)
-        {
-            word = 0;
-            IO device = mIO[unit];
-            if (device == null) return false; // TODO: what if wait=true?
-            Boolean ready = device.ReadReady;
-            if ((!wait) && (!ready)) return false;
-            DateTime start = DateTime.Now;
-            while (!ready)
-            {
-                Thread.Sleep(10);
-                ready = device.ReadReady;
-                if ((DateTime.Now - start) > sIndicatorLag) break;
-            }
-            if (!ready)
-            {
-                SetIOHold();
-                do Thread.Sleep(20); while (vIOHold && !device.ReadReady);
-                ReleaseIOHold();
-            }
-            return device.Read(out word);
         }
     }
 }
