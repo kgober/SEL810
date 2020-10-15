@@ -933,5 +933,104 @@ namespace Emulator
                 }
             }
         }
+
+        struct Op
+        {
+            String Name;
+            Int32 Format;
+            Int32 Code;
+            Int32 Arg;
+
+            public Op(String name, Int32 format, Int32 code, Int32 arg)
+            {
+                Name = name;
+                Format = format;
+                Code = code;
+                Arg = arg;
+            }
+        }
+
+        // fmt 0 = 000000ddddcccccc
+        // fmt 1 = 00000IM000cccccc XIaaaaaaaaaaaaaa
+        // fmt 2 = XIaaaaaaaaaaaaaa
+        // fmt 3 = 10110IMccWuuuuuu dddddddddddddddd
+        // fmt 4 = 10110IMccWuuuuuu
+        // fmt 5 = 10110IM11Wcccccc dddddddddddddddd
+        // fmt 6 = ccccXIMaaaaaaaaa
+        // fmt 7 = 11110IMccWuuuuuu dddddddddddddddd
+        // fmt 8 = 1111RIMccWuuuuuu
+        // fmt 9 = 0000000000cccccc 0aaaaaaaaaaaaaaa
+        // fmt 10= dddddddddddddddd
+        static Op[] Ops = {
+            new Op("DAC", 2, 0, 1),
+            new Op("EAC", 10, 0, 1),
+            new Op("DATA", 10, 0, 1),
+            new Op("HLT", 0, 0, 0),
+            new Op("RNA", 0, 1, 0),
+            new Op("NEG", 0, 2, 0),
+            new Op("CLA", 0, 3, 0),
+            new Op("TBA", 0, 4, 0),
+            new Op("TAB", 0, 5, 0),
+            new Op("IAB", 0, 6, 0),
+            new Op("CSB", 0, 7, 0),
+            new Op("RSA", 0, 8, 1),
+            new Op("LSA", 0, 9, 1),
+            new Op("FRA", 0, 10, 1),
+            new Op("FLL", 0, 11, 1),
+            new Op("FRL", 0, 12, 1),
+            new Op("RSL", 0, 13, 1),
+            new Op("LSL", 0, 14, 1),
+            new Op("FLA", 0, 15, 1),
+            new Op("ASC", 0, 16, 0),
+            new Op("SAS", 0, 17, 0),
+            new Op("SAZ", 0, 18, 0),
+            new Op("SAN", 0, 19, 0),
+            new Op("SAP", 0, 20, 0),
+            new Op("SOF", 0, 21, 0),
+            new Op("IBS", 0, 22, 0),
+            new Op("ABA", 0, 23, 0),
+            new Op("OBA", 0, 24, 0),
+            new Op("LCS", 0, 25, 0),
+            new Op("SNO", 0, 26, 0),
+            new Op("NOP", 0, 27, 0),
+            new Op("CNS", 0, 28, 0),
+            new Op("TOI", 0, 29, 0),
+            new Op("LOB", 9, 30, 1),
+            new Op("OVS", 0, 31, 0),
+            new Op("TBP", 0, 32, 0),
+            new Op("TPB", 0, 33, 0),
+            new Op("TBV", 0, 34, 0),
+            new Op("TVB", 0, 35, 0),
+            new Op("STX", 1, 36, 1),
+            new Op("LIX", 1, 37, 1),
+            new Op("XPX", 0, 38, 0),
+            new Op("XPB", 0, 39, 0),
+            new Op("SXB", 0, 40, 0),
+            new Op("IXS", 0, 41, 1),
+            new Op("TAX", 0, 42, 0),
+            new Op("TXA", 0, 43, 0),
+            new Op("CEU", 3, 0, 1),
+            new Op("TEU", 3, 1, 1),
+            new Op("SNS", 4, 2, 1),
+            new Op("PIE", 5, 0, 0),
+            new Op("PID", 5, 1, 0),
+            new Op("LAA", 6, 1, 0),
+            new Op("LBA", 6, 2, 0),
+            new Op("STA", 6, 3, 0),
+            new Op("STB", 6, 4, 0),
+            new Op("AMA", 6, 5, 0),
+            new Op("SMA", 6, 6, 0),
+            new Op("MPY", 6, 7, 0),
+            new Op("DIV", 6, 8, 0),
+            new Op("BRU", 6, 9, 0),
+            new Op("SPB", 6, 10, 0),
+            new Op("IMS", 6, 12, 0),
+            new Op("CMA", 6, 13, 0),
+            new Op("AMB", 6, 14, 0),
+            new Op("AOP", 8, 0, 1),
+            new Op("AIP", 8, 1, 1),
+            new Op("MOP", 7, 2, 1),
+            new Op("MIP", 7, 3, 1),
+        };
     }
 }
