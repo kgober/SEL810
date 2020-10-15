@@ -69,6 +69,7 @@ namespace Emulator
                     Console.Out.WriteLine("b [val] - display or set B accumulator");
                     Console.Out.WriteLine("c[onsole] [mode] - display or set console mode");
                     Console.Out.WriteLine("d[ump] [addr] - dump 8 words at 'addr' (Enter to continue)");
+                    Console.Out.WriteLine("e[nter] [addr] op [arg] - enter instruction at 'addr' (Enter to continue)");
                     Console.Out.WriteLine("f[orce] - force ready (release I/O hold)");
                     Console.Out.WriteLine("g[o] - start CPU");
                     Console.Out.WriteLine("h[alt] - halt CPU");
@@ -248,6 +249,11 @@ namespace Emulator
                     Dump(arg);
                     continue;
                 }
+                else if (cmd[0] == 'e') // enter
+                {
+                    Enter(arg);
+                    continue;
+                }
                 else if (cmd[0] == 'f') // force
                 {
                     CPU.ReleaseIOHold();
@@ -403,6 +409,7 @@ namespace Emulator
                     WriteBP(arg);
                 }
                 Console.Out.Write("810A>");
+                AUTO_CMD = String.Empty;
             }
         }
 
@@ -616,6 +623,69 @@ namespace Emulator
             else
             {
                 Console.Out.Write("810A>");
+                AUTO_CMD = String.Empty;
+            }
+        }
+
+        static Int16 ENTER_ADDR = -1;
+        static public void Enter(String arg)
+        {
+            Int32 p;
+            Int16 addr;
+            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            if (arg.Length == 0)
+            {
+                Console.Out.WriteLine("Must specify instruction");
+                Console.Out.Write("810A>");
+                AUTO_CMD = String.Empty;
+                return;
+            }
+            if ((p = arg.IndexOf(' ')) == -1)
+            {
+                if (ParseWord(arg, out addr))
+                {
+                    Console.Out.WriteLine("Must specify instruction");
+                    Console.Out.Write("810A>");
+                    AUTO_CMD = String.Empty;
+                    return;
+                }
+                addr = (AUTO_CMD == "enter") ? ENTER_ADDR : CPU.PC;
+                ENTER_ADDR = addr;
+                if (!Assemble(ref ENTER_ADDR, arg))
+                {
+                    Console.Out.Write("810A>");
+                    AUTO_CMD = String.Empty;
+                    return;
+                }
+                Console.Out.Write("{0}  {1}  {2}  >", Octal(addr, 5), Octal(CPU[addr], 6), Decode(ref addr, CPU[addr], 20));
+                AUTO_CMD = "enter";
+            }
+            else
+            {
+                if (ParseWord(arg.Substring(0, p), out addr))
+                {
+                    if (addr < 0)
+                    {
+                        Console.Out.WriteLine("Invalid address: {0}", arg.Substring(0, p));
+                        Console.Out.Write("810A>");
+                        AUTO_CMD = String.Empty;
+                        return;
+                    }
+                    arg = arg.Substring(p + 1);
+                }
+                else
+                {
+                    addr = (AUTO_CMD == "enter") ? ENTER_ADDR : CPU.PC;
+                }
+                ENTER_ADDR = addr;
+                if (!Assemble(ref ENTER_ADDR, arg))
+                {
+                    Console.Out.Write("810A>");
+                    AUTO_CMD = String.Empty;
+                    return;
+                }
+                Console.Out.Write("{0}  {1}  {2}  >", Octal(addr, 5), Octal(CPU[addr], 6), Decode(ref addr, CPU[addr], 20));
+                AUTO_CMD = "enter";
             }
         }
 
@@ -636,12 +706,14 @@ namespace Emulator
                 {
                     Console.Out.WriteLine("Unrecognized: {0}", arg.Substring(0, p));
                     Console.Out.Write("810A>");
+                    AUTO_CMD = String.Empty;
                     return;
                 }
                 if (word < 0)
                 {
                     Console.Out.WriteLine("Invalid: {0}", arg.Substring(0, p));
                     Console.Out.Write("810A>");
+                    AUTO_CMD = String.Empty;
                     return;
                 }
                 arg = arg.Substring(p + 1);
@@ -655,6 +727,7 @@ namespace Emulator
             {
                 Console.Out.WriteLine("Unrecognized: {0}", arg);
                 Console.Out.Write("810A>");
+                AUTO_CMD = String.Empty;
                 return;
             }
             CPU[p] = word;
@@ -678,6 +751,7 @@ namespace Emulator
             else
             {
                 Console.Out.Write("810A>");
+                AUTO_CMD = String.Empty;
             }
         }
 
@@ -702,6 +776,7 @@ namespace Emulator
             else
             {
                 Console.Out.Write("810A>");
+                AUTO_CMD = String.Empty;
             }
         }
 
@@ -860,7 +935,9 @@ namespace Emulator
                     case 33: return "TPB";
                     case 34: return "TBV";
                     case 35: return "TVB";
+                    case 36+64:
                     case 36: return String.Format("STX{0} '{1}", I, Octal(CPU[addr++], 6)); // should show M flag somehow
+                    case 37+64:
                     case 37: return String.Format("LIX{0} '{1}", I, Octal(CPU[addr++], 6)); // should show M flag somehow
                     case 38: return "XPX";
                     case 39: return "XPB";
@@ -934,14 +1011,374 @@ namespace Emulator
             }
         }
 
+        static private Boolean Assemble(ref Int16 addr, String line)
+        {
+            while ((line.Length != 0) && (line[0] == ' ')) line = line.Substring(1);
+            String name = line;
+            line = String.Empty;
+            Int32 p = name.IndexOf(' ');
+            if (p == -1) p = name.IndexOf('\t');
+            if (p != -1)
+            {
+                line = name.Substring(p + 1);
+                name = name.Substring(0, p);
+            }
+            name = name.ToUpper();
+            while ((line.Length != 0) && (line[0] == ' ')) line = line.Substring(1);
+            Boolean X = false;
+            Boolean I = false;
+            Boolean M = false;
+            Boolean W = false;
+            Boolean R = false;
+            if (name.EndsWith("*"))
+            {
+                name = name.Substring(0, name.Length - 1);
+                I = true;
+            }
+            p = 0;
+            while ((p < Ops.Length) && (Ops[p].Name != name)) p++;
+            if (p == Ops.Length)
+            {
+                Console.Out.WriteLine("Unrecognized mnemonic: {0}", name);
+                return false;
+            }
+            Op op = Ops[p];
+            Int16 arg = 0;
+            switch (op.Format)
+            {
+                case 0: // 000000ddddcccccc (Augmented 00)
+                    if (op.Arg != 0)
+                    {
+                        if (line.Length == 0)
+                        {
+                            Console.Out.WriteLine("Missing operand");
+                            return false;
+                        }
+                        if (!ParseWord(line, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                            return false;
+                        }
+                        if ((arg < 0) || (arg > 15))
+                        {
+                            Console.Out.WriteLine("Invalid operand: {0}", line);
+                            return false;
+                        }
+                    }
+                    arg <<= 6;
+                    arg |= op.Code;
+                    CPU[addr++] = arg;
+                    return true;
+                case 1: // 00000IM000cccccc XIaaaaaaaaaaaaaa (STX, LIX)
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
+                    }
+                    if (I) op.Code |= 0x0400;
+                    CPU[addr++] = op.Code;
+                    CPU[addr++] = arg;
+                    return true;
+                case 2: // XIaaaaaaaaaaaaaa (DAC)
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if ((line.EndsWith(",1")) || (line.EndsWith(",X", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        line = line.Substring(0, line.Length - 2);
+                        X = true;
+                    }
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
+                    }
+                    if ((arg < 0) || (arg >= 16384))
+                    {
+                        Console.Out.WriteLine("Invalid operand: {0}", line);
+                        return false;
+                    }
+                    if (X) arg |= -0x8000;
+                    if (I) arg |= 0x4000;
+                    CPU[addr++] = arg;
+                    return true;
+                case 3: // 10110IMccWuuuuuu dddddddddddddddd (CEU, TEU)
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if (op.Arg != 0)
+                    {
+                        p = line.IndexOf(' ');
+                        if (p == -1) p = line.IndexOf('\t');
+                        if (p == -1)
+                        {
+                            Console.Out.WriteLine("Missing operand");
+                            return false;
+                        }
+                        String unit = line.Substring(0, p);
+                        if ((unit.EndsWith(",1")) || (unit.EndsWith(",W", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            unit = unit.Substring(0, unit.Length - 2);
+                            W = true;
+                        }
+                        if (!ParseWord(unit, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized unit: {0}", unit);
+                            return false;
+                        }
+                        if ((arg < 0) || (arg > 63))
+                        {
+                            Console.Out.WriteLine("Invalid unit: {0}", unit);
+                            return false;
+                        }
+                        line = line.Substring(p + 1);
+                    }
+                    while ((line.Length != 0) && (line[0] == ' ')) line = line.Substring(1);
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    p = (0x160 | ((I) ? 8 : 0) | (op.Code & 3)) << 1; // TODO: M flag
+                    if (W) p |= 1;
+                    p = (p << 6) + arg;
+                    op.Code = (Int16)(p);
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
+                    }
+                    CPU[addr++] = op.Code;
+                    CPU[addr++] = arg;
+                    return true;
+                case 4: // 10110IMccWuuuuuu (SNS)
+                    if (op.Arg != 0)
+                    {
+                        if (line.Length == 0)
+                        {
+                            Console.Out.WriteLine("Missing operand");
+                            return false;
+                        }
+                        if (!ParseWord(line, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                            return false;
+                        }
+                        if ((arg < 0) || (arg > 63))
+                        {
+                            Console.Out.WriteLine("Invalid operand: {0}", line);
+                            return false;
+                        }
+                    }
+                    p = (0x160 | ((I) ? 8 : 0) | (op.Code & 3)) << 7; // TODO: M flag
+                    p += arg;
+                    CPU[addr++] = (Int16)(p);
+                    return true;
+                case 5: // 10110IM11Wcccccc dddddddddddddddd (PIE, PID)
+                    if (op.Arg != 0)
+                    {
+                        if (line.Length == 0)
+                        {
+                            Console.Out.WriteLine("Missing operand");
+                            return false;
+                        }
+                        if (!ParseWord(line, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                            return false;
+                        }
+                    }
+                    p = (0x163 | ((I) ? 8 : 0)) << 7; // TODO: M flag
+                    p |= op.Code & 63;
+                    CPU[addr++] = (Int16)(p);
+                    CPU[addr++] = arg;
+                    return true;
+                case 6: // ccccXIMaaaaaaaaa (LAA, LBA, STA, STB, AMA, SMA, MPY, DIV, BRU, SPB, IMS, CMA, AMB)
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if ((line.EndsWith(",1")) || (line.EndsWith(",X", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        line = line.Substring(0, line.Length - 2);
+                        X = true;
+                    }
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
+                    }
+                    if (arg < 0)
+                    {
+                        Console.Out.WriteLine("Invalid operand: {0}", line);
+                        return false;
+                    }
+                    if (arg >= 512)
+                    {
+                        if ((arg & 0x7e00) != (addr & 0x7e00))
+                        {
+                            Console.Out.WriteLine("Invalid operand MAP: {0}", line);
+                            return false;
+                        }
+                        arg &= 511;
+                        M = true;
+                    }
+                    p = (op.Code & 15) << 3;
+                    if (X) p |= 4;
+                    if (I) p |= 2;
+                    if (M) p |= 1;
+                    p <<= 9;
+                    p += arg;
+                    CPU[addr++] = arg;
+                    return true;
+                case 7: // 11110IMccWuuuuuu dddddddddddddddd (MOP, MIP)
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if (op.Arg != 0)
+                    {
+                        p = line.IndexOf(' ');
+                        if (p == -1) p = line.IndexOf('\t');
+                        if (p == -1)
+                        {
+                            Console.Out.WriteLine("Missing operand");
+                            return false;
+                        }
+                        String unit = line.Substring(0, p);
+                        if ((unit.EndsWith(",1")) || (unit.EndsWith(",W", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            unit = unit.Substring(0, unit.Length - 2);
+                            W = true;
+                        }
+                        if (!ParseWord(unit, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized unit: {0}", unit);
+                            return false;
+                        }
+                        if ((arg < 0) || (arg > 63))
+                        {
+                            Console.Out.WriteLine("Invalid unit: {0}", unit);
+                            return false;
+                        }
+                        line = line.Substring(p + 1);
+                    }
+                    while ((line.Length != 0) && (line[0] == ' ')) line = line.Substring(1);
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    p = (0x1e0 | ((I) ? 8 : 0) | (op.Code & 3)) << 1; // TODO: M flag
+                    if (W) p |= 1;
+                    p = (p << 6) + arg;
+                    op.Code = (Int16)(p);
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
+                    }
+                    CPU[addr++] = op.Code;
+                    CPU[addr++] = arg;
+                    return true;
+                case 8: // 1111RIMccWuuuuuu (AOP, AIP)
+                    if (op.Arg != 0)
+                    {
+                        if (line.Length == 0)
+                        {
+                            Console.Out.WriteLine("Missing operand");
+                            return false;
+                        }
+                        if ((line.EndsWith(",1")) || (line.EndsWith(",R", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            line = line.Substring(0, line.Length - 2);
+                            R = true;
+                        }
+                        if ((line.EndsWith(",1")) || (line.EndsWith(",W", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            line = line.Substring(0, line.Length - 2);
+                            W = true;
+                        }
+                        if (!ParseWord(line, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized unit: {0}", line);
+                            return false;
+                        }
+                        if ((arg < 0) || (arg > 63))
+                        {
+                            Console.Out.WriteLine("Invalid unit: {0}", line);
+                            return false;
+                        }
+                    }
+                    p = (0x1e0 | ((R) ? 16 : 0) | ((I) ? 8 : 0) | (op.Code & 3)) << 1; // TODO: M flag
+                    if (W) p |= 1;
+                    p = (p << 6) + arg;
+                    CPU[addr++] = (Int16)(p);
+                    return true;
+                case 9: // 0000000000cccccc 0aaaaaaaaaaaaaaa (LOB)
+                    if (op.Arg != 0)
+                    {
+                        if (line.Length == 0)
+                        {
+                            Console.Out.WriteLine("Missing address");
+                            return false;
+                        }
+                        if (!ParseWord(line, out arg))
+                        {
+                            Console.Out.WriteLine("Unrecognized address: {0}", line);
+                            return false;
+                        }
+                        if (arg < 0)
+                        {
+                            Console.Out.WriteLine("Invalid address: {0}", line);
+                            return false;
+                        }
+                    }
+                    CPU[addr++] = op.Code;
+                    CPU[addr++] = arg;
+                    return true;
+                case 10: // dddddddddddddddd (EAC, DATA)
+                    if (line.Length == 0)
+                    {
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
+                    }
+                    if ((op.Arg != 0) && (arg < 0))
+                    {
+                        Console.Out.WriteLine("Invalid address: {0}", line);
+                        return false;
+                    }
+                    CPU[addr++] = arg;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         struct Op
         {
-            String Name;
-            Int32 Format;
-            Int32 Code;
-            Int32 Arg;
+            public String Name;
+            public Int16 Code;
+            public Byte Format;
+            public Byte Arg;
 
-            public Op(String name, Int32 format, Int32 code, Int32 arg)
+            public Op(String name, Byte format, Int16 code, Byte arg)
             {
                 Name = name;
                 Format = format;
@@ -962,9 +1399,10 @@ namespace Emulator
         // fmt 9 = 0000000000cccccc 0aaaaaaaaaaaaaaa
         // fmt 10= dddddddddddddddd
         static Op[] Ops = {
-            new Op("DAC", 2, 0, 1),
+            new Op("DAC", 2, 0, 0),
             new Op("EAC", 10, 0, 1),
-            new Op("DATA", 10, 0, 1),
+            new Op("DATA", 10, 0, 0),
+            new Op("**", 0, 0, 0),
             new Op("HLT", 0, 0, 0),
             new Op("RNA", 0, 1, 0),
             new Op("NEG", 0, 2, 0),
