@@ -32,18 +32,45 @@ namespace Emulator
     class Program
     {
         static public Boolean VERBOSE = false;
-        static SEL810 CPU = new SEL810();
+        static SEL810 CPU;
         static String AUTO_CMD = String.Empty;
 
         static void Main(String[] args)
         {
+            Int32 gui_ver = 0;
+
             Int32 ap = 0;
             while (ap < args.Length)
             {
                 String arg = args[ap++];
-                LoadState(arg);
+                if ((arg == null) || (arg.Length == 0))
+                {
+                    continue;
+                }
+                else if (arg[0] == '-')
+                {
+                    if (arg.Length == 1)
+                    {
+                        // - by itself, ignore this for now
+                    }
+                    else if ((arg[1] == 'g') || (arg[1] == 'G'))
+                    {
+                        arg = arg.Substring(2);
+                        if (arg.Length == 0) arg = args[ap++];
+                        gui_ver = Int32.Parse(arg);
+                    }
+                    else
+                    {
+                        // unrecognized option, ignore for now
+                    }
+                }
+                else
+                {
+                    LoadState(arg);
+                }
             }
 
+            CPU = new SEL810(gui_ver);
             Console.Out.Write("810A>");
             String cmd;
             while ((cmd = Console.In.ReadLine()) != null)

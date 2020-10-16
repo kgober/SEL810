@@ -54,6 +54,8 @@ namespace Emulator
         private Thread mCPUThread;
         private Thread mGUIThread;
         private Socket mGUISocket;
+        private Int32 mGUIProtocol;
+        private Boolean mGUIDirty;
         private JSON.Value mGUIState;
 
         private Int16[] mCore = new Int16[CORE_SIZE];
@@ -77,9 +79,10 @@ namespace Emulator
 
         private IO[] mIO = new IO[64];
 
-        public SEL810()
+        public SEL810(Int32 guiVersion)
         {
-            mGUIState = JSON.Value.ReadFrom(@"{
+            mGUIProtocol = guiVersion;
+            if (guiVersion == 1) mGUIState = JSON.Value.ReadFrom(@"{
                 ""Program Counter"": 0,
                 ""A Register"": 0,
                 ""B Register"": 0,
@@ -253,8 +256,11 @@ namespace Emulator
             if (vHalt)
             {
                 Console.Out.Write("[RUN]");
-                mGUIState["halt"] = new JSON.Value(false);
-                RefreshGUI();
+                if (mGUIProtocol == 1)
+                {
+                    mGUIState["halt"] = new JSON.Value(false);
+                    mGUIDirty = true;
+                }
             }
             vHalt = false;
         }
@@ -264,8 +270,11 @@ namespace Emulator
             if (!vHalt)
             {
                 Console.Out.Write("[HALT]");
-                mGUIState["halt"] = new JSON.Value(true);
-                RefreshGUI();
+                if (mGUIProtocol == 1)
+                {
+                    mGUIState["halt"] = new JSON.Value(true);
+                    mGUIDirty = true;
+                }
             }
             vHalt = true;
         }
@@ -281,8 +290,11 @@ namespace Emulator
             if (!vIOHold)
             {
                 if (Program.VERBOSE) Console.Out.Write("[+IOH]");
-                mGUIState["iowait"] = new JSON.Value(true);
-                RefreshGUI();
+                if (mGUIProtocol == 1)
+                {
+                    mGUIState["iowait"] = new JSON.Value(true);
+                    mGUIDirty = true;
+                }
             }
             vIOHold = true;
         }
@@ -292,8 +304,11 @@ namespace Emulator
             if (vIOHold)
             {
                 if (Program.VERBOSE) Console.Out.Write("[-IOH]");
-                mGUIState["iowait"] = new JSON.Value(false);
-                RefreshGUI();
+                if (mGUIProtocol == 1)
+                {
+                    mGUIState["iowait"] = new JSON.Value(false);
+                    mGUIDirty = true;
+                }
             }
             vIOHold = false;
         }
@@ -321,8 +336,11 @@ namespace Emulator
             if (!vOverflow)
             {
                 if (Program.VERBOSE) Console.Out.Write("[+OVF]");
-                mGUIState["overflow"] = new JSON.Value(true);
-                RefreshGUI();
+                if (mGUIProtocol == 1)
+                {
+                    mGUIState["overflow"] = new JSON.Value(true);
+                    mGUIDirty = true;
+                }
             }
             vOverflow = true;
         }
@@ -332,8 +350,11 @@ namespace Emulator
             if (vOverflow)
             {
                 if (Program.VERBOSE) Console.Out.Write("[-OVF]");
-                mGUIState["overflow"] = new JSON.Value(false);
-                RefreshGUI();
+                if (mGUIProtocol == 1)
+                {
+                    mGUIState["overflow"] = new JSON.Value(false);
+                    mGUIDirty = true;
+                }
             }
             vOverflow = false;
         }
@@ -434,14 +455,18 @@ namespace Emulator
         {
             Socket gui = mGUISocket;
             if (gui == null) return;
-            String s = mGUIState.ToString();
-            Byte[] buf = Encoding.ASCII.GetBytes(s);
-            Byte[] len = new Byte[2];
-            Int32 n = buf.Length;
-            len[0] = (Byte)((n >> 8) & 255);
-            len[1] = (Byte)(n & 255);
-            gui.Send(len, 0, 2, SocketFlags.None);
-            gui.Send(buf, 0, n, SocketFlags.None);
+            if (mGUIProtocol == 1)
+            {
+                String s = mGUIState.ToString();
+                Byte[] buf = Encoding.ASCII.GetBytes(s);
+                Byte[] len = new Byte[2];
+                Int32 n = buf.Length;
+                len[0] = (Byte)((n >> 8) & 255);
+                len[1] = (Byte)(n & 255);
+                gui.Send(len, 0, 2, SocketFlags.None);
+                gui.Send(buf, 0, n, SocketFlags.None);
+            }
+            mGUIDirty = false;
         }
 
         private void GUIThread()
@@ -1003,6 +1028,7 @@ namespace Emulator
         {
             Socket gui = mGUISocket;
             if (gui == null) return;
+            if (mGUIDirty) RefreshGUI();
             Int32 n;
             try
             {
@@ -1014,9 +1040,12 @@ namespace Emulator
             }
             if (n != 0)
             {
-                Byte[] buf = new Byte[n];
-                gui.Receive(buf, 0, n, SocketFlags.None);
-                // TODO: do something with this data
+                if (mGUIProtocol == 1)
+                {
+                    Byte[] buf = new Byte[n];
+                    gui.Receive(buf, 0, n, SocketFlags.None);
+                    // TODO: do something with this data
+                }
             }
         }
 
@@ -1035,8 +1064,11 @@ namespace Emulator
                     }
                 }
             }
-            mGUIState["A Register"] = new JSON.Value(value);
-            RefreshGUI();
+            if (mGUIProtocol == 1)
+            {
+                mGUIState["A Register"] = new JSON.Value(value);
+                mGUIDirty = true;
+            }
             return mA = value;
         }
 
@@ -1055,8 +1087,11 @@ namespace Emulator
                     }
                 }
             }
-            mGUIState["B Register"] = new JSON.Value(value);
-            RefreshGUI();
+            if (mGUIProtocol == 1)
+            {
+                mGUIState["B Register"] = new JSON.Value(value);
+                mGUIDirty = true;
+            }
             return mB = value;
         }
 
@@ -1075,8 +1110,11 @@ namespace Emulator
                     }
                 }
             }
-            mGUIState["Instruction"] = new JSON.Value(value);
-            RefreshGUI();
+            if (mGUIProtocol == 1)
+            {
+                mGUIState["Instruction"] = new JSON.Value(value);
+                mGUIDirty = true;
+            }
             return mIR = value;
         }
 
@@ -1094,8 +1132,11 @@ namespace Emulator
                     }
                 }
             }
-            mGUIState["Program Counter"] = new JSON.Value(value);
-            RefreshGUI();
+            if (mGUIProtocol == 1)
+            {
+                mGUIState["Program Counter"] = new JSON.Value(value);
+                mGUIDirty = true;
+            }
             return mPC = value;
         }
 
