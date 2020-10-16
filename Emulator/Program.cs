@@ -98,7 +98,7 @@ namespace Emulator
                     Console.Out.WriteLine("d[ump] [addr] - dump 8 words at 'addr' (Enter to continue)");
                     Console.Out.WriteLine("e[nter] [addr] op [arg] - enter instruction at 'addr' (Enter to continue)");
                     Console.Out.WriteLine("f[orce] - force ready (release I/O hold)");
-                    Console.Out.WriteLine("g[o] - start CPU");
+                    Console.Out.WriteLine("g[o] [addr] - start CPU (at addr if specified)");
                     Console.Out.WriteLine("h[alt] - halt CPU");
                     Console.Out.WriteLine("ir [val] - display or set Instruction Register");
                     Console.Out.WriteLine("i[nput] filename - read paper tape input from 'filename'");
@@ -287,7 +287,19 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'g') // go
                 {
-                    CPU.Run();
+                    if (arg.Length == 0)
+                    {
+                        CPU.Run();
+                    }
+                    else if (!ParseWord(arg, out word))
+                    {
+                        Console.Out.WriteLine("Unrecognized: {0}", arg);
+                    }
+                    else
+                    {
+                        CPU.PC = word;
+                        CPU.Run();
+                    }
                 }
                 else if (cmd[0] == 'h') // halt
                 {

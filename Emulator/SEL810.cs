@@ -485,7 +485,7 @@ namespace Emulator
                 RefreshGUI();
                 while ((C.Connected) && (!vExitGUI))
                 {
-                    Thread.Sleep(100);
+                    Thread.Sleep(200);
                     StepFrontPanel();
                 }
                 C.Close();
