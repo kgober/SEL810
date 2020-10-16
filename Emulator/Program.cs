@@ -1239,7 +1239,7 @@ namespace Emulator
                     if (M) p |= 1;
                     p <<= 9;
                     p += arg;
-                    CPU[addr++] = arg;
+                    CPU[addr++] = (Int16)(p);
                     return true;
                 case 7: // 11110IMccWuuuuuu dddddddddddddddd (MOP, MIP)
                     if (line.Length == 0)

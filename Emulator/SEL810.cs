@@ -22,6 +22,9 @@
 
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 
 namespace Emulator
@@ -29,10 +32,12 @@ namespace Emulator
     class SEL810
     {
         public const Int32 CORE_SIZE = 32768;       // number of words of memory
+        public const Int32 DEFAULT_GUI_PORT = 8100; // TCP port for front panel
         public const Int32 DEFAULT_TTY_PORT = 8101; // TCP port for console TTY
 
         private static TimeSpan sIndicatorLag = new TimeSpan(0, 0, 0, 0, 200);
 
+        private volatile Boolean vExitGUI = false;
         private volatile Boolean vStep = false;
         private volatile Boolean vHalt = true;
         private volatile Boolean vIOHold = false;
@@ -47,6 +52,9 @@ namespace Emulator
 
         private Object mLock = new Object();
         private Thread mCPUThread;
+        private Thread mGUIThread;
+        private Socket mGUISocket;
+        private JSON.Value mGUIState;
 
         private Int16[] mCore = new Int16[CORE_SIZE];
         private Int16 mT, mA, mB, mPC, mIR, mSR, mX, mPPR, mVBR;
@@ -71,6 +79,44 @@ namespace Emulator
 
         public SEL810()
         {
+            mGUIState = JSON.Value.ReadFrom(@"{
+                ""Program Counter"": 0,
+                ""A Register"": 0,
+                ""B Register"": 0,
+                ""Control Switches"": 0,
+                ""Instruction"": 0,
+                ""Interrupt Register"": 0,
+                ""Transfer Register"": 0,
+                ""Protect Register"": 0,
+                ""VBR Register"": 0,
+                ""Index Register"": 0,
+                ""Stall Counter"": 0,
+                ""halt"": true,
+                ""iowait"": false,
+                ""overflow"": false,
+                ""master_clear"": false,
+                ""parity"": false,
+                ""display"": false,
+                ""enter"": false,
+                ""step"": false,
+                ""io_hold_release"": false,
+                ""cold_boot"": false,
+                ""carry"": false,
+                ""protect"": false,
+                ""mode_key"": false,
+                ""index_pointer"": false,
+                ""stall"": false,
+                ""assembler"": ""RNA"",
+                ""sim_ticks"": 0,
+                ""Program Counter_pwm"": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ""A Register_pwm"": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ""B Register_pwm"": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ""Instruction_pwm"": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ""Transfer Register_pwm"": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            }");
+            mGUIThread = new Thread(new ThreadStart(GUIThread));
+            mGUIThread.Start();
+
             mCPUThread = new Thread(new ThreadStart(CPUThread));
             mCPUThread.Start();
 
@@ -204,13 +250,23 @@ namespace Emulator
 
         public void Run()
         {
-            if (vHalt) Console.Out.Write("[RUN]");
+            if (vHalt)
+            {
+                Console.Out.Write("[RUN]");
+                mGUIState["halt"] = new JSON.Value(false);
+                RefreshGUI();
+            }
             vHalt = false;
         }
 
         public void Halt()
         {
-            if (!vHalt) Console.Out.Write("[HALT]");
+            if (!vHalt)
+            {
+                Console.Out.Write("[HALT]");
+                mGUIState["halt"] = new JSON.Value(true);
+                RefreshGUI();
+            }
             vHalt = true;
         }
 
@@ -222,37 +278,63 @@ namespace Emulator
 
         private void SetIOHold()
         {
-            if (!vIOHold && Program.VERBOSE) Console.Out.Write("[+IOH]");
+            if (!vIOHold)
+            {
+                if (Program.VERBOSE) Console.Out.Write("[+IOH]");
+                mGUIState["iowait"] = new JSON.Value(true);
+                RefreshGUI();
+            }
             vIOHold = true;
         }
 
         public void ReleaseIOHold()
         {
-            if (vIOHold && Program.VERBOSE) Console.Out.Write("[-IOH]");
+            if (vIOHold)
+            {
+                if (Program.VERBOSE) Console.Out.Write("[-IOH]");
+                mGUIState["iowait"] = new JSON.Value(false);
+                RefreshGUI();
+            }
             vIOHold = false;
         }
 
         private void SetInterrupt()
         {
-            if (!vInterrupt && Program.VERBOSE) Console.Out.Write("[+INT]");
+            if (!vInterrupt)
+            {
+                if (Program.VERBOSE) Console.Out.Write("[+INT]");
+            }
             vInterrupt = true;
         }
 
         private void ClearInterrupt()
         {
-            if (vInterrupt && Program.VERBOSE) Console.Out.Write("[-INT]");
+            if (vInterrupt)
+            {
+                if (Program.VERBOSE) Console.Out.Write("[-INT]");
+            }
             vInterrupt = false;
         }
 
         private void SetOverflow()
         {
-            if (!vOverflow && Program.VERBOSE) Console.Out.Write("[+OVF]");
+            if (!vOverflow)
+            {
+                if (Program.VERBOSE) Console.Out.Write("[+OVF]");
+                mGUIState["overflow"] = new JSON.Value(true);
+                RefreshGUI();
+            }
             vOverflow = true;
         }
 
         private void ClearOverflow()
         {
-            if (vOverflow && Program.VERBOSE) Console.Out.Write("[-OVF]");
+            if (vOverflow)
+            {
+                if (Program.VERBOSE) Console.Out.Write("[-OVF]");
+                mGUIState["overflow"] = new JSON.Value(false);
+                RefreshGUI();
+            }
             vOverflow = false;
         }
 
@@ -266,6 +348,8 @@ namespace Emulator
                     mIO[i] = null;
                 }
             }
+            vExitGUI = true;
+            mGUIThread.Join();
             mCPUThread.Abort();
             mCPUThread.Join();
         }
@@ -344,6 +428,44 @@ namespace Emulator
                 case 2: mBPIR[value] = false; return;
                 case 3: mBPPC[value] = false; return;
             }
+        }
+
+        private void RefreshGUI()
+        {
+            Socket gui = mGUISocket;
+            if (gui == null) return;
+            String s = mGUIState.ToString();
+            Byte[] buf = Encoding.ASCII.GetBytes(s);
+            Byte[] len = new Byte[2];
+            Int32 n = buf.Length;
+            len[0] = (Byte)((n >> 8) & 255);
+            len[1] = (Byte)(n & 255);
+            gui.Send(len, 0, 2, SocketFlags.None);
+            gui.Send(buf, 0, n, SocketFlags.None);
+        }
+
+        private void GUIThread()
+        {
+            TcpListener L = new TcpListener(IPAddress.Any, DEFAULT_GUI_PORT);
+            L.Start();
+            while (!vExitGUI)
+            {
+                while ((!L.Pending()) && (!vExitGUI)) Thread.Sleep(100);
+                if (vExitGUI) break;
+                TcpClient C = L.AcceptTcpClient();
+                lock (this) mGUISocket = C.Client;
+                Console.Out.Write("[+GUI]");
+                RefreshGUI();
+                while ((C.Connected) && (!vExitGUI))
+                {
+                    Thread.Sleep(100);
+                    StepFrontPanel();
+                }
+                C.Close();
+                Console.Out.Write("[-GUI]");
+                lock (this) mGUISocket = null;
+            }
+            L.Stop();
         }
 
         private void CPUThread()
@@ -877,6 +999,27 @@ namespace Emulator
             }
         }
 
+        private void StepFrontPanel()
+        {
+            Socket gui = mGUISocket;
+            if (gui == null) return;
+            Int32 n;
+            try
+            {
+                n = gui.Available;
+            }
+            catch
+            {
+                return;
+            }
+            if (n != 0)
+            {
+                Byte[] buf = new Byte[n];
+                gui.Receive(buf, 0, n, SocketFlags.None);
+                // TODO: do something with this data
+            }
+        }
+
         private Int16 wA(Int16 value)
         {
             if (vBPA)
@@ -892,6 +1035,8 @@ namespace Emulator
                     }
                 }
             }
+            mGUIState["A Register"] = new JSON.Value(value);
+            RefreshGUI();
             return mA = value;
         }
 
@@ -910,6 +1055,8 @@ namespace Emulator
                     }
                 }
             }
+            mGUIState["B Register"] = new JSON.Value(value);
+            RefreshGUI();
             return mB = value;
         }
 
@@ -928,6 +1075,8 @@ namespace Emulator
                     }
                 }
             }
+            mGUIState["Instruction"] = new JSON.Value(value);
+            RefreshGUI();
             return mIR = value;
         }
 
@@ -945,6 +1094,8 @@ namespace Emulator
                     }
                 }
             }
+            mGUIState["Program Counter"] = new JSON.Value(value);
+            RefreshGUI();
             return mPC = value;
         }
 
