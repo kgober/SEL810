@@ -55,6 +55,7 @@ namespace Emulator
         private Thread mGUIThread;
         private Socket mGUISocket;
         private Int32 mGUIProtocol;
+        private Int32 mGUIProtocolState;
         private Boolean mGUIDirty;
         private JSON.Value mGUIState;
 
@@ -463,8 +464,8 @@ namespace Emulator
                 Int32 n = buf.Length;
                 len[0] = (Byte)((n >> 8) & 255);
                 len[1] = (Byte)(n & 255);
-                gui.Send(len, 0, 2, SocketFlags.None);
-                gui.Send(buf, 0, n, SocketFlags.None);
+                gui.Send(len, 0, 2, SocketFlags.None); // TODO: verify return code
+                gui.Send(buf, 0, n, SocketFlags.None); // TODO: verify return code
             }
             mGUIDirty = false;
         }
@@ -478,6 +479,7 @@ namespace Emulator
                 while ((!L.Pending()) && (!vExitGUI)) Thread.Sleep(100);
                 if (vExitGUI) break;
                 TcpClient C = L.AcceptTcpClient();
+                mGUIProtocolState = 0;
                 lock (this) mGUISocket = C.Client;
                 Console.Out.Write("[+GUI]");
                 RefreshGUI();
@@ -1038,14 +1040,32 @@ namespace Emulator
             {
                 return;
             }
-            if (n != 0)
+            if (mGUIProtocol == 1)
             {
-                if (mGUIProtocol == 1)
+                if (n == 0) return;
+                switch (mGUIProtocolState)
                 {
-                    Byte[] buf = new Byte[n];
-                    gui.Receive(buf, 0, n, SocketFlags.None);
-                    // TODO: do something with this data
+                    case 0:
+                        if (n < 2) return;
+                        Byte[] len = new Byte[2];
+                        gui.Receive(len, 0, 2, SocketFlags.None); // TODO: verify return code
+                        mGUIProtocolState = (len[0] << 8) | len[1];
+                        break;
+                    default:
+                        if (n < mGUIProtocolState) return;
+                        Byte[] buf = new Byte[mGUIProtocolState];
+                        gui.Receive(buf, 0, mGUIProtocolState, SocketFlags.None); // TODO: verify return code
+                        String s = Encoding.ASCII.GetString(buf);
+                        JSON.Value v = JSON.Value.ReadFrom(s);
+                        Console.Out.WriteLine(v.ToString());
+                        break;
                 }
+            }
+            else if (n != 0)
+            {
+                Byte[] buf = new Byte[n];
+                gui.Receive(buf, 0, n, SocketFlags.None);
+                // discard
             }
         }
 
