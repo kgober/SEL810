@@ -1049,15 +1049,16 @@ namespace Emulator
                         if (n < 2) return;
                         Byte[] len = new Byte[2];
                         gui.Receive(len, 0, 2, SocketFlags.None); // TODO: verify return code
-                        mGUIProtocolState = (len[0] << 8) | len[1];
+                        mGUIProtocolState = len[0]*256 + len[1];
                         break;
                     default:
                         if (n < mGUIProtocolState) return;
                         Byte[] buf = new Byte[mGUIProtocolState];
                         gui.Receive(buf, 0, mGUIProtocolState, SocketFlags.None); // TODO: verify return code
                         String s = Encoding.ASCII.GetString(buf);
+                        Console.Out.WriteLine(s);
                         JSON.Value v = JSON.Value.ReadFrom(s);
-                        Console.Out.WriteLine(v.ToString());
+                        mGUIProtocolState = 0;
                         break;
                 }
             }
