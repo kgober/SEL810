@@ -296,7 +296,7 @@ namespace TapeDump
                     }
                 }
 
-                if (!QUIET) Console.Error.WriteLine("OK Blocks: {0:D0}/{1:D0} ({2:F2}%)", cs_good, cs_count, (100.0 * cs_good ) / cs_count);
+                if ((!QUIET) && (cs_count != 0)) Console.Error.WriteLine("OK Blocks: {0:D0}/{1:D0} ({2:F2}%)", cs_good, cs_count, (100.0 * cs_good) / cs_count);
 
                 if (DUMPFILE != null)
                 {
@@ -444,7 +444,7 @@ namespace TapeDump
                     Console.Out.WriteLine();
                 }
 
-                if (!QUIET) Console.Error.WriteLine("OK Blocks: {0:D0}/{1:D0} ({2:F2}%)", cs_good, cs_count, (100.0 * cs_good) / cs_count);
+                if ((!QUIET) && (cs_count != 0)) Console.Error.WriteLine("OK Blocks: {0:D0}/{1:D0} ({2:F2}%)", cs_good, cs_count, (100.0 * cs_good) / cs_count);
 
                 q = p;
             }
