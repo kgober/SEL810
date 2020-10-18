@@ -32,13 +32,13 @@ namespace Emulator
     class Program
     {
         static public Boolean VERBOSE = false;
-        static SEL810 CPU;
+
+        static Char[] WHITESPACE = new Char[] { ' ', '\t' };
         static String AUTO_CMD = String.Empty;
+        static SEL810 CPU = new SEL810();
 
         static void Main(String[] args)
         {
-            Int32 gui_ver = 0;
-
             Int32 ap = 0;
             while (ap < args.Length)
             {
@@ -57,7 +57,7 @@ namespace Emulator
                     {
                         arg = arg.Substring(2);
                         if (arg.Length == 0) arg = args[ap++];
-                        gui_ver = Int32.Parse(arg);
+                        CPU.SetGUIProtocol(Int32.Parse(arg));
                     }
                     else
                     {
@@ -70,18 +70,18 @@ namespace Emulator
                 }
             }
 
-            CPU = new SEL810(gui_ver);
             Console.Out.Write("810A>");
             String cmd;
             while ((cmd = Console.In.ReadLine()) != null)
             {
+                UInt16 word;
                 String arg = String.Empty;
-                Int32 p = cmd.IndexOf(' ');
-                Int16 word;
+                Int32 p = cmd.IndexOfAny(WHITESPACE);
                 if (p != -1)
                 {
                     arg = cmd.Substring(p + 1);
                     cmd = cmd.Substring(0, p);
+                    while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
                 }
                 if (cmd.Length == 0) cmd = AUTO_CMD;
                 if (cmd.Length == 0)
@@ -124,7 +124,8 @@ namespace Emulator
                 else if (cmd.EndsWith("+"))
                 {
                     cmd = cmd.Substring(0, cmd.Length - 1);
-                    switch (cmd.ToUpper())
+                    String reg = cmd.ToUpper();
+                    switch (reg)
                     {
                         case "A": p = 0; break;
                         case "B": p = 1; break;
@@ -140,19 +141,20 @@ namespace Emulator
                     {
                         Console.Out.WriteLine("Unrecognized value: {0}", arg);
                     }
-                    else if ((p == 3) && (word < 0))
+                    else if ((p == 3) && (word >= 0x8000))
                     {
                         Console.Out.WriteLine("Invalid PC value: {0}", arg);
                     }
                     else
                     {
-                        CPU.SetBPReg(p, ((Int32)(word)) & 0xffff);
+                        CPU.SetBPReg(p, word);
                     }
                 }
                 else if (cmd.EndsWith("-"))
                 {
                     cmd = cmd.Substring(0, cmd.Length - 1);
-                    switch (cmd.ToUpper())
+                    String reg = cmd.ToUpper();
+                    switch (reg)
                     {
                         case "A": p = 0; break;
                         case "B": p = 1; break;
@@ -168,13 +170,13 @@ namespace Emulator
                     {
                         Console.Out.WriteLine("Unrecognized value: {0}", arg);
                     }
-                    else if ((p == 3) && (word < 0))
+                    else if ((p == 3) && (word >= 0x8000))
                     {
                         Console.Out.WriteLine("Invalid PC value: {0}", arg);
                     }
                     else
                     {
-                        CPU.ClearBPReg(p, ((Int32)(word)) & 0xffff);
+                        CPU.ClearBPReg(p, word);
                     }
                 }
                 else if (cmd.EndsWith("?"))
@@ -195,15 +197,13 @@ namespace Emulator
                     }
                     else
                     {
-                        Int32 n = (p == 3) ? 32768 : 65536;
-                        Int32 w = (p == 3) ? 5 : 6;
+                        Int32 lim = (p == 3) ? 32768 : 65536;
+                        Int32 wid = (p == 3) ? 5 : 6;
                         Int32 ct = 0;
-                        for (Int32 i = 0; i < n; i++)
+                        for (Int32 i = 0; i < lim; i++)
                         {
-                            if (!CPU.GetBPReg(p, i)) continue;
-                            word = (Int16)(i & 0x7fff);
-                            if (i >= 32768) word += -32768;
-                            Console.Out.WriteLine("{0} BP: {1:x4}/{2}", reg, word, Octal(word, w));
+                            if (!CPU.GetBPReg(p, (UInt16)(i))) continue;
+                            Console.Out.WriteLine("{0} BP: {1:x4}/{2}", reg, i, Octal(i, wid));
                             ct++;
                         }
                         if (ct == 0) Console.Out.WriteLine("{0} BP: none set", reg);
@@ -328,15 +328,21 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'l') // load
                 {
-                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-                    if ((p = arg.IndexOf(' ')) == -1)
+                    if ((p = arg.IndexOfAny(WHITESPACE)) == -1) // TODO: handle no addr, with a filename with whitespace in it
                     {
                         word = 0;
                     }
                     else
                     {
-                        if (!ParseWord(arg.Substring(0, p), out word)) word = 0;
-                        else arg = arg.Substring(p + 1);
+                        if (!ParseWord(arg.Substring(0, p), out word))
+                        {
+                            word = 0;
+                        }
+                        else
+                        {
+                            arg = arg.Substring(p + 1);
+                            while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
+                        }
                     }
                     if (!File.Exists(arg)) Console.Out.WriteLine("File not found: {0}", arg);
                     else CPU.Load(word, arg);
@@ -349,8 +355,7 @@ namespace Emulator
                 }
                 else if (cmd[0] == 'n') // network
                 {
-                    while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-                    if ((p = arg.IndexOf(' ')) == -1) p = arg.Length;
+                    if ((p = arg.IndexOfAny(WHITESPACE)) == -1) p = arg.Length;
                     if (!ParseWord(arg.Substring(0, p), out word))
                     {
                         Console.Out.WriteLine("Unrecognized unit number: {0}", arg.Substring(0, p));
@@ -362,7 +367,7 @@ namespace Emulator
                     else
                     {
                         arg = arg.Substring(p);
-                        while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                        while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
                         CPU.AttachDevice(word, arg);
                     }
                 }
@@ -457,15 +462,15 @@ namespace Emulator
         {
             Byte[] buf = File.ReadAllBytes(fileName);
             Int32 p = 0, q = 0;
-            CPU.PC = BitConverter.ToInt16(buf, p);
-            CPU.IR = BitConverter.ToInt16(buf, p += 2);
-            CPU.A = BitConverter.ToInt16(buf, p += 2);
-            CPU.B = BitConverter.ToInt16(buf, p += 2);
-            CPU.T = BitConverter.ToInt16(buf, p += 2);
-            CPU.SR = BitConverter.ToInt16(buf, p += 2);
+            CPU.PC = BitConverter.ToUInt16(buf, p);
+            CPU.IR = BitConverter.ToUInt16(buf, p += 2);
+            CPU.A = BitConverter.ToUInt16(buf, p += 2);
+            CPU.B = BitConverter.ToUInt16(buf, p += 2);
+            CPU.T = BitConverter.ToUInt16(buf, p += 2);
+            CPU.SR = BitConverter.ToUInt16(buf, p += 2);
             while ((p += 2) < buf.Length)
             {
-                CPU[q++] = BitConverter.ToInt16(buf, p);
+                CPU[q++] = BitConverter.ToUInt16(buf, p);
             }
         }
 
@@ -495,9 +500,8 @@ namespace Emulator
         static public void Save(String arg)
         {
             Int32 p;
-            Int16 addr, len;
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-            if ((p = arg.IndexOf(' ')) == -1)
+            UInt16 addr, len;
+            if ((p = arg.IndexOfAny(WHITESPACE)) == -1)
             {
                 Console.Out.WriteLine("Must specify address, word count, and filename");
                 return;
@@ -507,14 +511,14 @@ namespace Emulator
                 Console.Out.WriteLine("Unrecognized address: {0}", arg.Substring(0, p));
                 return;
             }
-            if (addr < 0)
+            if (addr >= 0x8000)
             {
                 Console.Out.WriteLine("Invalid address: {0}", arg.Substring(0, p));
                 return;
             }
             arg = arg.Substring(p + 1);
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-            if ((p = arg.IndexOf(' ')) == -1)
+            while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
+            if ((p = arg.IndexOfAny(WHITESPACE)) == -1)
             {
                 Console.Out.WriteLine("Must specify address, word count, and filename");
                 return;
@@ -524,13 +528,13 @@ namespace Emulator
                 Console.Out.WriteLine("Unrecognized word count: {0}", arg.Substring(0, p));
                 return;
             }
-            if (len < 0)
+            if ((addr + len) > 0x8000)
             {
                 Console.Out.WriteLine("Invalid word count: {0}", arg.Substring(0, p));
                 return;
             }
             arg = arg.Substring(p + 1);
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
             if (arg.Length == 0)
             {
                 Console.Out.WriteLine("Must specify address, word count, and filename");
@@ -539,7 +543,7 @@ namespace Emulator
             FileStream f = new FileStream(arg, FileMode.Create, FileAccess.Write);
             for (Int32 i = 0; i < len; i++)
             {
-                Int16 word = CPU[(addr + i) % 32768];
+                UInt16 word = CPU[addr + i];
                 f.WriteByte((Byte)((word >> 8) & 0xff));
                 f.WriteByte((Byte)(word & 0xff));
             }
@@ -549,21 +553,21 @@ namespace Emulator
         static public void ReadBP(String arg)
         {
             Int32 p;
-            Int16 addr, ct;
+            UInt16 addr;
+            Int16 ct;
             if (arg.Length == 0)
             {
-                Int16 n = 0;
-                for (Int32 i = 0; i < SEL810.CORE_SIZE; i++)
+                Int32 n = 0;
+                for (UInt16 i = 0; i < SEL810.CORE_SIZE; i++)
                 {
-                    if ((ct = CPU.GetBPR((Int16)(i))) == 0) continue;
-                    Console.Out.WriteLine("Read BP: {0:x4}/{1} {2}", i, Octal((Int16)(i), 5), (ct < 0) ? "*" : ct.ToString());
+                    if ((ct = CPU.GetBPR(i)) == 0) continue;
+                    Console.Out.WriteLine("Read BP: {0:x4}/{1} {2}", i, Octal(i, 5), (ct < 0) ? "*" : ct.ToString());
                     n++;
                 }
                 if (n == 0) Console.Out.WriteLine("Read BP: none set");
                 return;
             }
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-            if ((p = arg.IndexOf(' ')) == -1)
+            if ((p = arg.IndexOfAny(WHITESPACE)) == -1)
             {
                 ct = -1;
                 if (!ParseWord(arg, out addr))
@@ -580,7 +584,7 @@ namespace Emulator
                     return;
                 }
                 arg = arg.Substring(p + 1);
-                while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+                while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
                 if (arg.Length == 0)
                 {
                     ct = -1;
@@ -597,21 +601,21 @@ namespace Emulator
         static public void WriteBP(String arg)
         {
             Int32 p;
-            Int16 addr, ct;
+            UInt16 addr;
+            Int16 ct;
             if (arg.Length == 0)
             {
-                Int16 n = 0;
-                for (Int32 i = 0; i < SEL810.CORE_SIZE; i++)
+                Int32 n = 0;
+                for (UInt16 i = 0; i < SEL810.CORE_SIZE; i++)
                 {
-                    if ((ct = CPU.GetBPW((Int16)(i))) == 0) continue;
-                    Console.Out.WriteLine("Write BP: {0:x4}/{1} {2}", i, Octal((Int16)(i), 5), (ct < 0) ? "*" : ct.ToString());
+                    if ((ct = CPU.GetBPW(i)) == 0) continue;
+                    Console.Out.WriteLine("Write BP: {0:x4}/{1} {2}", i, Octal(i, 5), (ct < 0) ? "*" : ct.ToString());
                     n++;
                 }
                 if (n == 0) Console.Out.WriteLine("Write BP: none set");
                 return;
             }
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-            if ((p = arg.IndexOf(' ')) == -1)
+            if ((p = arg.IndexOfAny(WHITESPACE)) == -1)
             {
                 ct = -1;
                 if (!ParseWord(arg, out addr))
@@ -642,36 +646,33 @@ namespace Emulator
             CPU.SetBPW(addr, ct);
         }
 
-        static Int16 DUMP_ARG = -1;
+        static UInt16 DUMP_ADDR = 0;
         static public void Dump(String arg)
         {
-            Int16 p;
-            if (arg.Length == 0) p = (AUTO_CMD == "dump") ? DUMP_ARG : CPU.PC;
-            else if (!ParseWord(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
-            if (p != -1)
+            UInt16 p;
+            if (arg.Length == 0) p = (AUTO_CMD == "dump") ? DUMP_ADDR : CPU.PC;
+            else if (!ParseWord(arg, out p))
             {
-                Console.Out.Write("{0}  ", Octal(p, 5));
-                for (Int32 i = 0; i < 8; i++)
-                {
-                    Console.Out.Write(" {0}", Octal(CPU[(p + i) % 32768], 6));
-                }
-                Console.Out.Write("  >");
-                AUTO_CMD = "dump";
-                DUMP_ARG = (Int16)((p + 8) % 32768);
-            }
-            else
-            {
+                Console.Out.WriteLine("Unrecognized: {0}", arg);
                 Console.Out.Write("810A>");
                 AUTO_CMD = String.Empty;
+                return;
             }
+            Console.Out.Write("{0}  ", Octal(p, 5));
+            for (Int32 i = 0; i < 8; i++)
+            {
+                Console.Out.Write(" {0}", Octal(CPU[(p + i) % 32768], 6));
+            }
+            Console.Out.Write("  >");
+            AUTO_CMD = "dump";
+            DUMP_ADDR = (UInt16)((p + 8) % 32768);
         }
 
-        static Int16 ENTER_ADDR = -1;
+        static UInt16 ENTER_ADDR = 0;
         static public void Enter(String arg)
         {
             Int32 p;
-            Int16 addr;
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
+            UInt16 addr;
             if (arg.Length == 0)
             {
                 Console.Out.WriteLine("Must specify instruction");
@@ -679,7 +680,7 @@ namespace Emulator
                 AUTO_CMD = String.Empty;
                 return;
             }
-            if ((p = arg.IndexOf(' ')) == -1)
+            if ((p = arg.IndexOfAny(WHITESPACE)) == -1)
             {
                 if (ParseWord(arg, out addr))
                 {
@@ -703,7 +704,7 @@ namespace Emulator
             {
                 if (ParseWord(arg.Substring(0, p), out addr))
                 {
-                    if (addr < 0)
+                    if (addr >= 0x8000)
                     {
                         Console.Out.WriteLine("Invalid address: {0}", arg.Substring(0, p));
                         Console.Out.Write("810A>");
@@ -711,6 +712,7 @@ namespace Emulator
                         return;
                     }
                     arg = arg.Substring(p + 1);
+                    while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
                 }
                 else
                 {
@@ -728,13 +730,12 @@ namespace Emulator
             }
         }
 
-        static Int16 WRITE_ADDR = -1;
+        static UInt16 WRITE_ADDR = 0;
         static public void Write(String arg)
         {
             Int32 p;
-            Int16 word;
-            while ((arg.Length != 0) && (arg[0] == ' ')) arg = arg.Substring(1);
-            if ((p = arg.IndexOf(' ')) == -1)
+            UInt16 word;
+            if ((p = arg.IndexOfAny(WHITESPACE)) == -1)
             {
                 p = WRITE_ADDR;
                 if (p == -1) p = 0;
@@ -748,7 +749,7 @@ namespace Emulator
                     AUTO_CMD = String.Empty;
                     return;
                 }
-                if (word < 0)
+                if (word >= 0x8000)
                 {
                     Console.Out.WriteLine("Invalid: {0}", arg.Substring(0, p));
                     Console.Out.Write("810A>");
@@ -756,6 +757,7 @@ namespace Emulator
                     return;
                 }
                 arg = arg.Substring(p + 1);
+                while (arg.IndexOfAny(WHITESPACE) == 0) arg = arg.Substring(1);
                 p = word;
             }
             if (arg.Length == 0)
@@ -771,46 +773,44 @@ namespace Emulator
             }
             CPU[p] = word;
             AUTO_CMD = "=";
-            WRITE_ADDR = (Int16)((p + 1) % 32768);
-            Console.Out.Write("{0}={1:x4}/{2}  {3}:{4:x4}/{5}  >", Octal((Int16)(p), 5), word, Octal(word, 6), Octal(WRITE_ADDR, 5), CPU[WRITE_ADDR], Octal(CPU[WRITE_ADDR], 6));
+            WRITE_ADDR = (UInt16)((p + 1) % 32768);
+            Console.Out.Write("{0}={1:x4}/{2}  {3}:{4:x4}/{5}  >", Octal(p, 5), word, Octal(word, 6), Octal(WRITE_ADDR, 5), CPU[WRITE_ADDR], Octal(CPU[WRITE_ADDR], 6));
         }
 
-        static Int16 DISASM_ARG = -1;
+        static UInt16 DISASM_ADDR = 0;
         static public void Disassemble(String arg)
         {
-            Int16 p;
-            if (arg.Length == 0) p = (AUTO_CMD == "unassemble") ? DISASM_ARG : CPU.PC;
-            else if (!ParseWord(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
-            if (p != -1)
+            UInt16 p;
+            if (arg.Length == 0) p = (AUTO_CMD == "unassemble") ? DISASM_ADDR : CPU.PC;
+            else if (!ParseWord(arg, out p))
             {
-                Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Decode(ref p, CPU[p], 20));
-                AUTO_CMD = "unassemble";
-                DISASM_ARG = (Int16)(p % 32768);
-            }
-            else
-            {
+                Console.Out.WriteLine("Unrecognized: {0}", arg);
                 Console.Out.Write("810A>");
                 AUTO_CMD = String.Empty;
+                return;
             }
+            Console.Out.Write("{0}  {1}  {2}  >", Octal(p, 5), Octal(CPU[p], 6), Decode(ref p, CPU[p], 20));
+            AUTO_CMD = "unassemble";
+            DISASM_ADDR = (UInt16)(p % 32768);
         }
 
-        static Int32 STEP_ARG = -1;
+        static Int32 STEP_ADDR = -1;
         static public void Step(String arg)
         {
             Int32 p;
-            if (arg.Length == 0) p = (AUTO_CMD == "step") ? STEP_ARG : 1;
+            if (arg.Length == 0) p = (AUTO_CMD == "step") ? STEP_ADDR : 1;
             else if (!Int32.TryParse(arg, out p)) Console.Out.WriteLine("Unrecognized: {0}", arg);
 
             for (Int32 i = 0; (i < p) && (CPU.IsHalted); i++)
             {
                 CPU.Step();
                 Console.Out.Write("A:{0:X4}/{1}  B:{2:X4}/{3}  T:{4:X4}/{5}  ", CPU.A, Octal(CPU.A, 6), CPU.B, Octal(CPU.B, 6), CPU.T, Octal(CPU.T, 6));
-                Console.Out.Write("PC:{0:X4}/{1}  {2}  {3}  >", CPU.PC, Octal(CPU.PC, 5), Octal(CPU.IR, 6), Decode(CPU.PC, CPU.IR, 16));
+                Console.Out.Write("PC:{0}  {1}  {2}  >", Octal(CPU.PC, 5), Octal(CPU.IR, 6), Decode(CPU.PC, CPU.IR, 16));
             }
             if (p != -1)
             {
                 AUTO_CMD = "step";
-                STEP_ARG = p;
+                STEP_ADDR = p;
             }
             else
             {
@@ -821,13 +821,35 @@ namespace Emulator
 
         static public Boolean ParseWord(String s, out Int16 result)
         {
+            Int32 n;
+            Boolean retval = ParseWord(s, out n, -32768, 65535);
+            result = (Int16)n;
+            return retval;
+        }
+
+        static public Boolean ParseWord(String s, out UInt16 result)
+        {
+            Int32 n;
+            Boolean retval = ParseWord(s, out n, 0, 65535);
+            result = (UInt16)n;
+            return retval;
+        }
+
+        static public Boolean ParseWord(String s, out Int32 result, Int32 min, Int32 max)
+        {
             result = -1;
             if (s == null) return false;
             Int32 p = 0;
             while ((p < s.Length) && (s[p] == ' ')) p++; // skip leading spaces
             if (p == s.Length) return false;
-            Int16 radix = 10;
+            UInt16 radix = 10;
             Int16 sign = 1;
+            if (s[p] == '-')
+            {
+                sign = -1;
+                p++;
+                if (p == s.Length) return false;
+            }
             if ((s[p] == '\'') || (s[p] == 'o'))
             {
                 radix = 8;
@@ -838,58 +860,40 @@ namespace Emulator
                 radix = 16;
                 p++;
             }
-            else if (s[p] == '-')
-            {
-                sign = -1;
-                p++;
-                if (p == s.Length) return false;
-                if (s[p] == 'o')
-                {
-                    radix = 8;
-                    p++;
-                }
-                else if (s[p] == 'x')
-                {
-                    radix = 16;
-                    p++;
-                }
-            }
             if (p == s.Length) return false;
             Int32 n;
             if ((n = RadixValue(s[p++], radix)) == -1) return false;
-            result = (Int16)(n * sign);
+            result = n * sign;
             while ((p < s.Length) && ((n = RadixValue(s[p], radix)) != -1))
             {
-                if ((((result * radix) + n) > 65535) && (sign == 1)) break;
-                if ((((result * radix) - n) < -32768) && (sign == -1)) break;
-                n = ((sign * result * radix) + n) * sign;
-                result = (Int16)(n & 0xffff);
+                result = result * radix + n * sign;
+                if ((result < min) || (result > max)) break;
                 p++;
             }
             return (p == s.Length);
         }
 
-        static public Int16 RadixValue(Char c, Int32 radix)
+        static public Int32 RadixValue(Char c, Int32 radix)
         {
             if (c < '0') return -1;
-            if ((c <= '9') && ((c - '0') < radix)) return (Int16)(c - '0');
+            if ((c <= '9') && ((c - '0') < radix)) return c - '0';
             if (c < 'A') return -1;
             if (c >= '`') c -= ' ';
-            if ((c <= 'Z') && ((c - 'A' + 10) < radix)) return (Int16)(c - 'A' + 10);
+            if ((c <= 'Z') && ((c - 'A' + 10) < radix)) return c - 'A' + 10;
             return -1;
         }
 
-        static public String Octal(Int16 value)
+        static public String Octal(Int32 value)
         {
             return Octal(value, 0, '0');
         }
 
-        static public String Octal(Int16 value, Int32 minWidth)
+        static public String Octal(Int32 value, Int32 minWidth)
         {
             return Octal(value, minWidth, (minWidth < 0) ? ' ' : '0');
         }
 
-        static public String Octal(Int16 value, Int32 minWidth, Char padChar)
+        static public String Octal(Int32 value, Int32 minWidth, Char padChar)
         {
             Boolean f = false;
             if (minWidth < 0)
@@ -905,26 +909,26 @@ namespace Emulator
             return String.Concat(pad, num);
         }
 
-        static public String Decode(Int16 addr, Int16 word, Int32 width)
+        static public String Decode(UInt16 addr, UInt16 word, Int32 width)
         {
-            Int16 tmp = addr;
+            UInt16 tmp = addr;
             return Decode(ref tmp, word, width);
         }
 
-        static public String Decode(ref Int16 addr, Int16 word, Int32 width)
+        static public String Decode(ref UInt16 addr, UInt16 word, Int32 width)
         {
             String s = Decode(ref addr, word);
             if (s.Length >= width) return s;
             return String.Concat(s, new String(' ', width - s.Length));
         }
 
-        static public String Decode(Int16 addr, Int16 word)
+        static public String Decode(UInt16 addr, UInt16 word)
         {
-            Int16 tmp = addr;
+            UInt16 tmp = addr;
             return Decode(ref tmp, word);
         }
 
-        static public String Decode(ref Int16 addr, Int16 word)
+        static public String Decode(ref UInt16 addr, UInt16 word)
         {
             // o ooo xim aaa aaa aaa - memory reference instruction
             // o ooo xis sss aaa aaa - augmented instruction
@@ -990,7 +994,7 @@ namespace Emulator
             else if (op == 11)
             {
                 Int32 aug = (word >> 6) & 7;
-                Int16 unit = (Int16)(word & 0x3f);
+                UInt16 unit = (UInt16)(word & 0x3f);
                 addr++;
                 switch (aug)
                 {
@@ -1010,7 +1014,7 @@ namespace Emulator
             else if (op == 15)
             {
                 Int32 aug = (word >> 6) & 7;
-                Int16 unit = (Int16)(word & 0x3f);
+                UInt16 unit = (UInt16)(word & 0x3f);
                 addr++;
                 switch (aug)
                 {
@@ -1027,8 +1031,8 @@ namespace Emulator
             }
             else
             {
-                Int16 ea = (Int16)(word & 511);
-                if ((word & 0x200) != 0) ea |= (Int16)(addr & 0x7e00); // M flag
+                UInt16 ea = (UInt16)(word & 511);
+                if ((word & 0x200) != 0) ea |= (UInt16)(addr & 0x7e00); // M flag
                 addr++;
                 switch (op)
                 {
@@ -1050,7 +1054,7 @@ namespace Emulator
             }
         }
 
-        static private Boolean Assemble(ref Int16 addr, String line)
+        static private Boolean Assemble(ref UInt16 addr, String line)
         {
             while ((line.Length != 0) && (line[0] == ' ')) line = line.Substring(1);
             String name = line;
@@ -1082,7 +1086,7 @@ namespace Emulator
                 return false;
             }
             Op op = Ops[p];
-            Int16 arg = 0;
+            UInt16 arg = 0;
             switch (op.Format)
             {
                 case 0: // 000000ddddcccccc (Augmented 00)
@@ -1098,7 +1102,7 @@ namespace Emulator
                             Console.Out.WriteLine("Unrecognized operand: {0}", line);
                             return false;
                         }
-                        if ((arg < 0) || (arg > 15))
+                        if (arg > 15)
                         {
                             Console.Out.WriteLine("Invalid operand: {0}", line);
                             return false;
@@ -1139,12 +1143,12 @@ namespace Emulator
                         Console.Out.WriteLine("Unrecognized operand: {0}", line);
                         return false;
                     }
-                    if ((arg < 0) || (arg >= 16384))
+                    if (arg >= 16384)
                     {
                         Console.Out.WriteLine("Invalid operand: {0}", line);
                         return false;
                     }
-                    if (X) arg |= -0x8000;
+                    if (X) arg |= 0x8000;
                     if (I) arg |= 0x4000;
                     CPU[addr++] = arg;
                     return true;
@@ -1174,7 +1178,7 @@ namespace Emulator
                             Console.Out.WriteLine("Unrecognized unit: {0}", unit);
                             return false;
                         }
-                        if ((arg < 0) || (arg > 63))
+                        if (arg > 63)
                         {
                             Console.Out.WriteLine("Invalid unit: {0}", unit);
                             return false;
@@ -1190,7 +1194,7 @@ namespace Emulator
                     p = (0x160 | ((I) ? 8 : 0) | (op.Code & 3)) << 1; // TODO: M flag
                     if (W) p |= 1;
                     p = (p << 6) + arg;
-                    op.Code = (Int16)(p);
+                    op.Code = (UInt16)(p);
                     if (!ParseWord(line, out arg))
                     {
                         Console.Out.WriteLine("Unrecognized operand: {0}", line);
@@ -1212,7 +1216,7 @@ namespace Emulator
                             Console.Out.WriteLine("Unrecognized operand: {0}", line);
                             return false;
                         }
-                        if ((arg < 0) || (arg > 63))
+                        if (arg > 63)
                         {
                             Console.Out.WriteLine("Invalid operand: {0}", line);
                             return false;
@@ -1220,7 +1224,7 @@ namespace Emulator
                     }
                     p = (0x160 | ((I) ? 8 : 0) | (op.Code & 3)) << 7; // TODO: M flag
                     p += arg;
-                    CPU[addr++] = (Int16)(p);
+                    CPU[addr++] = (UInt16)(p);
                     return true;
                 case 5: // 10110IM11Wcccccc dddddddddddddddd (PIE, PID)
                     if (op.Arg != 0)
@@ -1238,7 +1242,7 @@ namespace Emulator
                     }
                     p = (0x163 | ((I) ? 8 : 0)) << 7; // TODO: M flag
                     p |= op.Code & 63;
-                    CPU[addr++] = (Int16)(p);
+                    CPU[addr++] = (UInt16)(p);
                     CPU[addr++] = arg;
                     return true;
                 case 6: // ccccXIMaaaaaaaaa (LAA, LBA, STA, STB, AMA, SMA, MPY, DIV, BRU, SPB, IMS, CMA, AMB)
@@ -1257,7 +1261,7 @@ namespace Emulator
                         Console.Out.WriteLine("Unrecognized operand: {0}", line);
                         return false;
                     }
-                    if (arg < 0)
+                    if (arg >= 0x8000)
                     {
                         Console.Out.WriteLine("Invalid operand: {0}", line);
                         return false;
@@ -1278,7 +1282,7 @@ namespace Emulator
                     if (M) p |= 1;
                     p <<= 9;
                     p += arg;
-                    CPU[addr++] = (Int16)(p);
+                    CPU[addr++] = (UInt16)(p);
                     return true;
                 case 7: // 11110IMccWuuuuuu dddddddddddddddd (MOP, MIP)
                     if (line.Length == 0)
@@ -1306,7 +1310,7 @@ namespace Emulator
                             Console.Out.WriteLine("Unrecognized unit: {0}", unit);
                             return false;
                         }
-                        if ((arg < 0) || (arg > 63))
+                        if (arg > 63)
                         {
                             Console.Out.WriteLine("Invalid unit: {0}", unit);
                             return false;
@@ -1322,7 +1326,7 @@ namespace Emulator
                     p = (0x1e0 | ((I) ? 8 : 0) | (op.Code & 3)) << 1; // TODO: M flag
                     if (W) p |= 1;
                     p = (p << 6) + arg;
-                    op.Code = (Int16)(p);
+                    op.Code = (UInt16)(p);
                     if (!ParseWord(line, out arg))
                     {
                         Console.Out.WriteLine("Unrecognized operand: {0}", line);
@@ -1354,7 +1358,7 @@ namespace Emulator
                             Console.Out.WriteLine("Unrecognized unit: {0}", line);
                             return false;
                         }
-                        if ((arg < 0) || (arg > 63))
+                        if (arg > 63)
                         {
                             Console.Out.WriteLine("Invalid unit: {0}", line);
                             return false;
@@ -1363,7 +1367,7 @@ namespace Emulator
                     p = (0x1e0 | ((R) ? 16 : 0) | ((I) ? 8 : 0) | (op.Code & 3)) << 1; // TODO: M flag
                     if (W) p |= 1;
                     p = (p << 6) + arg;
-                    CPU[addr++] = (Int16)(p);
+                    CPU[addr++] = (UInt16)(p);
                     return true;
                 case 9: // 0000000000cccccc 0aaaaaaaaaaaaaaa (LOB)
                     if (op.Arg != 0)
@@ -1378,7 +1382,7 @@ namespace Emulator
                             Console.Out.WriteLine("Unrecognized address: {0}", line);
                             return false;
                         }
-                        if (arg < 0)
+                        if (arg >= 0x8000)
                         {
                             Console.Out.WriteLine("Invalid address: {0}", line);
                             return false;
@@ -1398,7 +1402,7 @@ namespace Emulator
                         Console.Out.WriteLine("Unrecognized operand: {0}", line);
                         return false;
                     }
-                    if ((op.Arg != 0) && (arg < 0))
+                    if ((op.Arg != 0) && (arg >= 0x8000))
                     {
                         Console.Out.WriteLine("Invalid address: {0}", line);
                         return false;
@@ -1413,11 +1417,11 @@ namespace Emulator
         struct Op
         {
             public String Name;
-            public Int16 Code;
+            public UInt16 Code;
             public Byte Format;
             public Byte Arg;
 
-            public Op(String name, Byte format, Int16 code, Byte arg)
+            public Op(String name, Byte format, UInt16 code, Byte arg)
             {
                 Name = name;
                 Format = format;

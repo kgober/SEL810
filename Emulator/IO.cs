@@ -42,14 +42,14 @@ namespace Emulator
 {
     abstract class IO
     {
-        public abstract Int16[] Interrupts { get; }     // get interrupts requested by device
+        public abstract UInt16[] Interrupts { get; }     // get interrupts requested by device
         public abstract Boolean CommandReady { get; }   // check if device ready for command (CEU)
         public abstract Boolean ReadReady { get; }      // check if device ready for read (AIP/MIP)
         public abstract Boolean WriteReady { get; }     // check if device ready for write (AOP/MOP)
-        public abstract Boolean Test(Int16 word);       // test device (TEU)
-        public abstract Boolean Command(Int16 word);    // command device (CEU)
-        public abstract Boolean Read(out Int16 word);   // read device (AIP/MIP)
-        public abstract Boolean Write(Int16 word);      // write device (AOP/MOP)
+        public abstract Boolean Test(UInt16 word);       // test device (TEU)
+        public abstract Boolean Command(UInt16 word);    // command device (CEU)
+        public abstract Boolean Read(out UInt16 word);   // read device (AIP/MIP)
+        public abstract Boolean Write(UInt16 word);      // write device (AOP/MOP)
         public abstract void Exit();                    // disconnect device from Emulator
     }
 
@@ -68,13 +68,13 @@ namespace Emulator
 
         private static TimeSpan sReaderReadDelay = new TimeSpan(0, 0, 0, 0, 20); // 50 is more accurate
         private static TimeSpan sReaderStopDelay = new TimeSpan(0, 0, 0, 0, 12);
-        private static TimeSpan sKeyboardDelay = new TimeSpan(0, 0, 0, 0, 40); // 100 is more accurate
-        private static TimeSpan sPrinterDelay = new TimeSpan(0, 0, 0, 0, 40); // 100 is more accurate
+        private static TimeSpan sKeyboardDelay = new TimeSpan(0, 0, 0, 0, 20); // 100 is more accurate
+        private static TimeSpan sPrinterDelay = new TimeSpan(0, 0, 0, 0, 20); // 100 is more accurate
 
         private Int32 mNetworkPort;
         private Thread mNetworkThread;
-        private volatile Boolean mNetworkExit;
         private NetworkStream mTerminal;
+        private volatile Boolean vNetworkExit;
 
         private Mode mInMode = Mode.Keyboard;
         private DateTime mLastRead = DateTime.MinValue;
@@ -88,7 +88,7 @@ namespace Emulator
         private Stream mPunch;
         private Int32 mPunchCount;
 
-        private Int16[] mInterrupts = new Int16[8];
+        private UInt16[] mInterrupts = new UInt16[8];
         private Boolean mInt_EnIn;
         private Boolean mInt_In;
         private Boolean mInt_EnOut;
@@ -101,7 +101,7 @@ namespace Emulator
             mNetworkThread.Start();
         }
 
-        public override Int16[] Interrupts
+        public override UInt16[] Interrupts
         {
             get
             {
@@ -206,12 +206,12 @@ namespace Emulator
             set { mOutMode = value; }
         }
 
-        public override Boolean Test(Int16 word)
+        public override Boolean Test(UInt16 word)
         {
             return true;
         }
 
-        public override Boolean Command(Int16 word)
+        public override Boolean Command(UInt16 word)
         {
             if ((word & 0x2000) != 0)
             {
@@ -255,12 +255,12 @@ namespace Emulator
             return true;
         }
 
-        public override Boolean Read(out Int16 word)
+        public override Boolean Read(out UInt16 word)
         {
             DateTime now = DateTime.Now;
             if ((mInMode == Mode.Reader) && (mReaderBuf != -1))
             {
-                word = (Int16)(mReaderBuf & 0xff);
+                word = (UInt16)(mReaderBuf & 0xff);
                 mReaderBuf = -1;
                 mInt_In = false;
                 mLastRead = now;
@@ -268,7 +268,7 @@ namespace Emulator
             }
             if ((mInMode == Mode.Keyboard) && (mKeyBuf != -1))
             {
-                word = (Int16)(mKeyBuf & 0xff);
+                word = (UInt16)(mKeyBuf & 0xff);
                 mKeyBuf = -1;
                 mInt_In = false;
                 mLastRead = now;
@@ -278,7 +278,7 @@ namespace Emulator
             return false;
         }
 
-        public override Boolean Write(Int16 word)
+        public override Boolean Write(UInt16 word)
         {
             DateTime now = DateTime.Now; 
             Byte b = (Byte)((word >> 8) & 0xff);
@@ -302,7 +302,7 @@ namespace Emulator
         {
             if (mReader != null) SetReader(null);
             if (mPunch != null) SetPunch(null);
-            mNetworkExit = true;
+            vNetworkExit = true;
             mNetworkThread.Join();
         }
 
@@ -337,14 +337,14 @@ namespace Emulator
         {
             TcpListener L = new TcpListener(IPAddress.Any, mNetworkPort);
             L.Start();
-            while (!mNetworkExit)
+            while (!vNetworkExit)
             {
-                while ((!L.Pending()) && (!mNetworkExit)) Thread.Sleep(100);
-                if (mNetworkExit) break;
+                while ((!L.Pending()) && (!vNetworkExit)) Thread.Sleep(100);
+                if (vNetworkExit) break;
                 TcpClient C = L.AcceptTcpClient();
                 lock(this) mTerminal = C.GetStream();
                 Console.Out.Write("[+TTY]");
-                while ((C.Connected) && (!mNetworkExit)) Thread.Sleep(100);
+                while ((C.Connected) && (!vNetworkExit)) Thread.Sleep(100);
                 C.Close();
                 Console.Out.Write("[-TTY]");
                 lock(this) mTerminal = null;
@@ -363,7 +363,7 @@ namespace Emulator
         private Boolean mLazyConnect;
         private SocketError mLastSocketError;
         private Byte[] mBuf = new Byte[24];
-        private Int16[] mInts = new Int16[8];
+        private UInt16[] mInts = new UInt16[8];
 
         public NetworkDevice(String host, Int32 port)
         {
@@ -374,7 +374,7 @@ namespace Emulator
             mLazyConnect = true;
         }
 
-        public override Int16[] Interrupts
+        public override UInt16[] Interrupts
         {
             get
             {
@@ -402,7 +402,7 @@ namespace Emulator
                     Int32 n = mBuf[p++] << 8;
                     n |= mBuf[p++] << 4;
                     n |= mBuf[p++];
-                    mInts[i] = (Int16)(n);
+                    mInts[i] = (UInt16)(n);
                 }
                 return mInts;
             }
@@ -456,7 +456,7 @@ namespace Emulator
             }
         }
 
-        public override Boolean Test(Int16 word)
+        public override Boolean Test(UInt16 word)
         {
             if (!mSocket.Connected)
             {
@@ -481,7 +481,7 @@ namespace Emulator
             return (mBuf[0] == '1');
         }
 
-        public override Boolean Command(Int16 word)
+        public override Boolean Command(UInt16 word)
         {
             if (!mSocket.Connected)
             {
@@ -506,7 +506,7 @@ namespace Emulator
             return (mBuf[0] == '.');
         }
 
-        public override Boolean Read(out Int16 word)
+        public override Boolean Read(out UInt16 word)
         {
             word = 0;
             if (!mSocket.Connected)
@@ -529,11 +529,11 @@ namespace Emulator
             n |= HexToBinary(mBuf[1]) << 8;
             n |= HexToBinary(mBuf[2]) << 4;
             n |= HexToBinary(mBuf[3]);
-            word = (Int16)(n);
+            word = (UInt16)(n);
             return true;
         }
 
-        public override Boolean Write(Int16 word)
+        public override Boolean Write(UInt16 word)
         {
             if (!mSocket.Connected)
             {
