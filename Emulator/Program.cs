@@ -1227,18 +1227,15 @@ namespace Emulator
                     CPU[addr++] = (UInt16)(p);
                     return true;
                 case 5: // 10110IM11Wcccccc dddddddddddddddd (PIE, PID)
-                    if (op.Arg != 0)
+                    if (line.Length == 0)
                     {
-                        if (line.Length == 0)
-                        {
-                            Console.Out.WriteLine("Missing operand");
-                            return false;
-                        }
-                        if (!ParseWord(line, out arg))
-                        {
-                            Console.Out.WriteLine("Unrecognized operand: {0}", line);
-                            return false;
-                        }
+                        Console.Out.WriteLine("Missing operand");
+                        return false;
+                    }
+                    if (!ParseWord(line, out arg))
+                    {
+                        Console.Out.WriteLine("Unrecognized operand: {0}", line);
+                        return false;
                     }
                     p = (0x163 | ((I) ? 8 : 0)) << 7; // TODO: M flag
                     p |= op.Code & 63;

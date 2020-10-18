@@ -402,11 +402,11 @@ namespace Emulator
             vIOHold = false;
         }
 
-        private void SetInterrupt()
+        private void SetInterrupt(Int32 group, Int32 level)
         {
             if (!vInterrupt)
             {
-                if (Program.VERBOSE) Console.Out.Write("[+INT]");
+                if (Program.VERBOSE) Console.Out.Write("[+INT{0:D0}:{1:D0}]", group, level);
             }
             vInterrupt = true;
         }
@@ -1101,7 +1101,7 @@ namespace Emulator
                             ea++;
                             mask <<= 1;
                         }
-                        SetInterrupt();
+                        SetInterrupt(mIntGroup, mIntLevel);
 
                         // execute SPB* instruction
                         T = Read(ea);
@@ -1184,12 +1184,6 @@ namespace Emulator
 
         private UInt16 Write(Int32 addr, UInt16 value)
         {
-            if (addr >= 0x8000)
-            {
-                Halt();
-                Console.Out.Write("[WRITE ERR {0}  PC:{1} IR:{2} {3}]", Program.Octal(addr, 6), Program.Octal(PC, 5), Program.Octal(IR, 6), Program.Decode(PC, IR));
-                return value;
-            }
             if (vBPW)
             {
                 Int16 n = mBPW[addr];
