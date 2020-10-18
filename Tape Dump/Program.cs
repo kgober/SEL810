@@ -231,6 +231,9 @@ namespace TapeDump
             Int32 p = startAt, q = startAt;
             while (q < tape.Length)
             {
+                Int32 cs_count = 0;
+                Int32 cs_good = 0;
+
                 // leader
                 Int32 c = 0;
                 while ((p < tape.Length) && (tape[p] != 0xff))
@@ -288,8 +291,12 @@ namespace TapeDump
                         Console.Error.Write("Block {0:D0} Checksum: ", b);
                         if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
                         else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                        cs_count++;
+                        if (sum == checksum) cs_good++;
                     }
                 }
+
+                if (!QUIET) Console.Error.WriteLine("OK Blocks: {0:D0}/{1:D0} ({2:F2}%)", cs_good, cs_count, (100.0 * cs_good ) / cs_count);
 
                 if (DUMPFILE != null)
                 {
@@ -325,6 +332,9 @@ namespace TapeDump
             Int32 p = startAt, q = startAt;
             while (q < tape.Length)
             {
+                Int32 cs_count = 0;
+                Int32 cs_good = 0;
+
                 // leader
                 Int32 c = 0;
                 while ((p < tape.Length) && (tape[p] != 0x8d))
@@ -413,6 +423,8 @@ namespace TapeDump
                         Console.Error.Write("Block {0:D0} Checksum: ", b);
                         if (sum == 0) Console.Error.WriteLine("{0:x4} OK", checksum);
                         else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
+                        cs_count++;
+                        if (sum == 0) cs_good++;
                     }
 
                     if (DUMP)
@@ -431,6 +443,8 @@ namespace TapeDump
                     }
                     Console.Out.WriteLine();
                 }
+
+                if (!QUIET) Console.Error.WriteLine("OK Blocks: {0:D0}/{1:D0} ({2:F2}%)", cs_good, cs_count, (100.0 * cs_good) / cs_count);
 
                 q = p;
             }
