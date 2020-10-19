@@ -967,10 +967,12 @@ namespace Emulator
                         break;
                     case 8: // 10 DIV - divide
                         T = Read(ea);
-                        s32 = (A << 15) | (B & 0x7fff);
-                        if (((A - T) & 0x8000) == 0) SetOverflow();
-                        B = (UInt16)(s32 % T);
-                        A = (UInt16)(s32 / T);
+                        s16 = (Int16)T;
+                        s32 = ((A == 0) && ((B & 0x8000) != 0)) ? 0xffff << 16 : A << 16;
+                        s32 = (s32 >> 1) | (B & 0x7fff);
+                        B = (UInt16)(s32 % s16);
+                        A = (UInt16)(s32 = s32 / s16);
+                        if ((s32 < -32767) || (s32 > 32767)) SetOverflow();
                         break;
                     case 9: // 11 BRU - branch unconditional
                         PC = (UInt16)(ea);
