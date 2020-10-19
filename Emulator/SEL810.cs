@@ -960,7 +960,7 @@ namespace Emulator
                         break;
                     case 7: // 07 MPY - multiply
                         T = Read(ea);
-                        s32 = T * B;
+                        s32 = (Int16)(T) * (Int16)(B);
                         if ((T == 0x8000) && (B == 0x8000)) SetOverflow();
                         B = (UInt16)(s32 & 0x7fff);
                         A = (UInt16)(s32 >> 15);
