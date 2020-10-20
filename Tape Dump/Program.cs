@@ -33,6 +33,7 @@ namespace TapeDump
         static Boolean QUIET;
         static Int32 SKIP;
         static Stream DUMPFILE;
+        static Int32 FIX;
         static UInt16[] CORE = new UInt16[32768];
         static Int32 PC = 0;
         static Int32 LO = 32768;
@@ -76,6 +77,10 @@ namespace TapeDump
                 else if (arg == "-s")
                 {
                     SKIP = Int32.Parse(args[ap++]);
+                }
+                else if (arg == "-f")
+                {
+                    FIX = Int32.Parse(args[ap++]);
                 }
                 else if (arg == "-w")
                 {
@@ -290,7 +295,7 @@ namespace TapeDump
                     {
                         Console.Error.Write("Block {0:D0} Checksum: ", b);
                         if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
-                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", sum, checksum);
+                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4}, off by {2:x4})", sum, checksum, checksum - sum);
                         cs_count++;
                         if (sum == checksum) cs_good++;
                     }
@@ -390,6 +395,7 @@ namespace TapeDump
                     Int32 j = 0;
                     c = 0;
                     Int32 sum = 0;
+                    Int32 pp = p;
                     for (Int32 i = 0; i < len; i++)
                     {
                         Byte n = tape[p++];
@@ -422,9 +428,35 @@ namespace TapeDump
                     {
                         Console.Error.Write("Block {0:D0} Checksum: ", b);
                         if (sum == 0) Console.Error.WriteLine("{0:x4} OK", checksum);
-                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4})", (sum + checksum) & 0xffff, checksum);
+                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4}, off by {2:x4})", (sum + checksum) & 0xffff, checksum, sum);
                         cs_count++;
                         if (sum == 0) cs_good++;
+                    }
+
+                    // fix
+                    if ((sum != 0) && (FIX != 0))
+                    {
+                        j = len * 2 + 2;
+                        while (--j >= 0)
+                        {
+                            sum = 0;
+                            Int32 qq = pp;
+                            Int32 ct = 0;
+                            Int32 val = 0;
+                            for (Int32 i = 0; i <= len; i++)
+                            {
+                                Byte n = (ct++ == j) ? (Byte)(0) : tape[qq++];
+                                val = n << 8;
+                                n = (ct++ == j) ? (Byte)(0) : tape[qq++];
+                                val |= n;
+                                sum += val;
+                            }
+                            sum &= 0xffff;
+                            Int32 diff = 0x10000 - sum;
+                            if (sum == 0) Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by 00 *** OK ***", j, val);
+                            else Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by {2:x4}{3}", j, val, diff, (((diff & 0xff00) == 0) || ((diff & 0x00ff) == 0)) ? " ***" : null);
+                        }
+
                     }
 
                     if (DUMP)
