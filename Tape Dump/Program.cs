@@ -279,6 +279,7 @@ namespace TapeDump
                     // block
                     b++;
                     Int32 sum = 0;
+                    Int32 pp = p;
                     for (Int32 j = 0; j < 64; j++)
                     {
                         if ((i + j) == len) break;
@@ -295,9 +296,34 @@ namespace TapeDump
                     {
                         Console.Error.Write("Block {0:D0} Checksum: ", b);
                         if (sum == checksum) Console.Error.WriteLine("{0:x4} OK", sum);
-                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4}, off by {2:x4})", sum, checksum, checksum - sum);
+                        else Console.Error.WriteLine("{0:x4} ERROR (expected {1:x4}, off by {2:x4})", sum, checksum, (checksum - sum) & 0xffff);
                         cs_count++;
                         if (sum == checksum) cs_good++;
+                    }
+
+                    // fix
+                    if ((sum != checksum) && (FIX != 0))
+                    {
+                        Int32 k = 130; // 64 data words plus 1 checksum word
+                        while (--k >= 0)
+                        {
+                            sum = 0;
+                            Int32 qq = pp;
+                            Int32 ct = 0;
+                            Int32 val = 0;
+                            for (Int32 j = 0; j <= 64; j++)
+                            {
+                                Byte n = (ct++ == k) ? (Byte)(0) : tape[qq++];
+                                val = n << 8;
+                                n = (ct++ == k) ? (Byte)(0) : tape[qq++];
+                                val |= n;
+                                sum += val;
+                            }
+                            sum &= 0xffff;
+                            Int32 diff = (val - sum) & 0xffff;
+                            if (sum == val) Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by 00 *** OK ***", k, val);
+                            else Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by {2:x4}{3}", k, val, diff, (((diff & 0xff00) == 0) || ((diff & 0x00ff) == 0)) ? " ***" : null);
+                        }
                     }
                 }
 
@@ -436,8 +462,8 @@ namespace TapeDump
                     // fix
                     if ((sum != 0) && (FIX != 0))
                     {
-                        j = len * 2 + 2;
-                        while (--j >= 0)
+                        Int32 k = 110; // 54 data words plus 1 checksum word
+                        while (--k >= 0)
                         {
                             sum = 0;
                             Int32 qq = pp;
@@ -445,16 +471,16 @@ namespace TapeDump
                             Int32 val = 0;
                             for (Int32 i = 0; i <= len; i++)
                             {
-                                Byte n = (ct++ == j) ? (Byte)(0) : tape[qq++];
+                                Byte n = (ct++ == k) ? (Byte)(0) : tape[qq++];
                                 val = n << 8;
-                                n = (ct++ == j) ? (Byte)(0) : tape[qq++];
+                                n = (ct++ == k) ? (Byte)(0) : tape[qq++];
                                 val |= n;
                                 sum += val;
                             }
                             sum &= 0xffff;
                             Int32 diff = 0x10000 - sum;
-                            if (sum == 0) Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by 00 *** OK ***", j, val);
-                            else Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by {2:x4}{3}", j, val, diff, (((diff & 0xff00) == 0) || ((diff & 0x00ff) == 0)) ? " ***" : null);
+                            if (sum == 0) Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by 00 *** OK ***", k, val);
+                            else Console.Error.WriteLine("insert 00 at block offset {0:D0}, sum {1:x4} off by {2:x4}{3}", k, val, diff, (((diff & 0xff00) == 0) || ((diff & 0x00ff) == 0)) ? " ***" : null);
                         }
 
                     }
