@@ -193,9 +193,9 @@ namespace Emulator
             get
             {
                 if ((DateTime.Now - mLastWrite) < sPrinterDelay) return false;
-                if ((mOutMode == Mode.Printer) && (mTerminal != null)) return true;
+                if (mOutMode == Mode.Printer) return true;
                 if ((mOutMode == Mode.Punch) && (mPunch != null)) return true;
-                if ((mOutMode == Mode.Both) && (mTerminal != null) && (mPunch != null)) return true;
+                if ((mOutMode == Mode.Both) && (mPunch != null)) return true;
                 return false;
             }
         }
@@ -282,10 +282,18 @@ namespace Emulator
         {
             DateTime now = DateTime.Now; 
             Byte b = (Byte)((word >> 8) & 0xff);
-            if (((mOutMode & Mode.Printer) != 0) && (mTerminal != null))
+            if ((mOutMode & Mode.Printer) != 0)
             {
-                mTerminal.WriteByte(b);
-                mLastWrite = now;
+                if (mTerminal != null)
+                {
+                    mTerminal.WriteByte(b);
+                    mLastWrite = now;
+                }
+                else
+                {
+                    Console.Out.Write((Char)(b & 127));
+                    mLastWrite = now;
+                }
             }
             if (((mOutMode & Mode.Punch) != 0) && (mPunch != null))
             {
