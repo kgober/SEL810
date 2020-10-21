@@ -23,7 +23,7 @@ in this repository for an example.
 -g1 - enable JSON-based GUI protocol as used by https://github.com/emooreatx/SEL810GUI  
 *statefile* - preload registers and memory from *statefile*
 
-### Commands
+### Emulator Commands
 a [*value*] - display A accumulator (or set if *value* given)  
 b [*value*] - display B accumulator (or set if *value* given)  
 c [*mode*] - display console output mode (or set if value given)  
