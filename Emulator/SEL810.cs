@@ -310,6 +310,18 @@ namespace Emulator
             cons.SetPunch(outputFile);
         }
 
+        public void TTY_KeyIn(Char ch)
+        {
+            Teletype cons = mIO[1] as Teletype;
+            cons.KeyIn(ch);
+        }
+
+        public void TTY_PrtOut(Char ch)
+        {
+            Teletype cons = mIO[1] as Teletype;
+            cons.PrtOut(ch);
+        }
+
         public void AttachDevice(Int32 unit, String destination)
         {
             IO device;

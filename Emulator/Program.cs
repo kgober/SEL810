@@ -102,6 +102,7 @@ namespace Emulator
                     Console.Out.WriteLine("h[alt] - halt CPU");
                     Console.Out.WriteLine("ir [val] - display or set Instruction Register");
                     Console.Out.WriteLine("i[nput] filename - read paper tape input from 'filename'");
+                    Console.Out.WriteLine("k[eys] input - queue input as if it had been typed at console keyboard");
                     Console.Out.WriteLine("l[oad] [addr] filename - load memory from 'filename' at 'addr' (default 0)");
                     Console.Out.WriteLine("mc - master clear (clears all registers)");
                     Console.Out.WriteLine("n[etwork] unit hostname:port - attach 'unit' via network");
@@ -326,6 +327,10 @@ namespace Emulator
                     if ((arg.Length != 0) && (!File.Exists(arg))) Console.Out.WriteLine("File not found: {0}", arg);
                     else CPU.SetReader(arg);
                 }
+                else if (cmd[0] == 'k') // keys
+                {
+                    Keys(arg);
+                }
                 else if (cmd[0] == 'l') // load
                 {
                     if ((p = arg.IndexOfAny(WHITESPACE)) == -1) // TODO: handle no addr, with a filename with whitespace in it
@@ -548,6 +553,115 @@ namespace Emulator
                 f.WriteByte((Byte)(word & 0xff));
             }
             f.Close();
+        }
+
+        static public void Keys(String arg)
+        {
+            Int32 s = 0;
+            Int32 p = 0;
+            Int32 n = 0;
+            while (p < arg.Length)
+            {
+                Char c = arg[p++];
+                switch (s)
+                {
+                    case 0: // normal keys
+                        if (c == '\\')
+                        {
+                            s = 1;
+                        }
+                        else
+                        {
+                            CPU.TTY_KeyIn(c);
+                        }
+                        break;
+
+                    case 1: // escape sequence
+                        if (c == 'a')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn('\a');
+                        }
+                        else if (c == 'b')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn('\b');
+                        }
+                        else if (c == 'e')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn((Char)(27));
+                        }
+                        else if (c == 'f')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn('\f');
+                        }
+                        else if (c == 'n')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn('\n');
+                        }
+                        else if (c == 'o')
+                        {
+                            s = 2;
+                        }
+                        else if (c == 'r')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn('\r');
+                        }
+                        else if (c == 't')
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn('\t');
+                        }
+                        else if (c == 'x')
+                        {
+                            s = 3;
+                        }
+                        else
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn(c);
+                        }
+                        break;
+
+                    case 2: // octal literal
+                        if ((c >= '0') && (c <= '7') && ((n * 8) < 255))
+                        {
+                            n = (n * 8) + RadixValue(c, 8);
+                        }
+                        else
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn((Char)(n));
+                            CPU.TTY_KeyIn(c);
+                        }
+                        break;
+
+                    case 3: // hex literal
+                        if ((c >= '0') && (c <= '9') && ((n * 16) < 255))
+                        {
+                            n = (n * 16) + RadixValue(c, 16);
+                        }
+                        else if ((c >= 'A') && (c <= 'F') && ((n * 16) < 255))
+                        {
+                            n = (n * 16) + RadixValue(c, 16);
+                        }
+                        else if ((c >= 'a') && (c <= 'f') && ((n * 16) < 255))
+                        {
+                            n = (n * 16) + RadixValue(c, 16);
+                        }
+                        else
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn((Char)(n));
+                            CPU.TTY_KeyIn(c);
+                        }
+                        break;
+                }
+            }
         }
 
         static public void ReadBP(String arg)

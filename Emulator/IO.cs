@@ -33,6 +33,7 @@
 
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -76,6 +77,7 @@ namespace Emulator
         private NetworkStream mTerminal;
         private volatile Boolean vNetworkExit;
 
+        private Queue<Char> mKbdQueue = new Queue<Char>();
         private Mode mInMode = Mode.Keyboard;
         private DateTime mLastRead = DateTime.MinValue;
         private Stream mReader;
@@ -106,11 +108,21 @@ namespace Emulator
             get
             {
                 DateTime now = DateTime.Now;
-                if ((mInMode == Mode.Keyboard) && (mTerminal != null) && (mKeyBuf == -1))
+                if (mInMode == Mode.Keyboard)
                 {
-                    if ((mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                    if (mKbdQueue.Count != 0)
                     {
-                        mKeyBuf = mTerminal.ReadByte() | 128;
+                        if ((mKeyBuf == -1) && ((now - mLastRead) > sKeyboardDelay))
+                        {
+                            lock (mKbdQueue) mKeyBuf = mKbdQueue.Dequeue() | 128;
+                        }
+                    }
+                    else if (mTerminal != null)
+                    {
+                        if ((mKeyBuf == -1) && (mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                        {
+                            mKeyBuf = mTerminal.ReadByte() | 128;
+                        }
                     }
                 }
                 if ((mInMode == Mode.Reader) && (mReader != null) && (mReaderBuf == -1))
@@ -143,11 +155,21 @@ namespace Emulator
             get
             {
                 DateTime now = DateTime.Now;
-                if ((mInMode == Mode.Keyboard) && (mTerminal != null) && (mKeyBuf == -1))
+                if (mInMode == Mode.Keyboard)
                 {
-                    if ((mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                    if (mKbdQueue.Count != 0)
                     {
-                        mKeyBuf = mTerminal.ReadByte() | 128;
+                        if ((mKeyBuf == -1) && ((now - mLastRead) > sKeyboardDelay))
+                        {
+                            lock (mKbdQueue) mKeyBuf = mKbdQueue.Dequeue() | 128;
+                        }
+                    }
+                    else if (mTerminal != null)
+                    {
+                        if ((mKeyBuf == -1) && (mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                        {
+                            mKeyBuf = mTerminal.ReadByte() | 128;
+                        }
                     }
                 }
                 if ((mInMode == Mode.Reader) && (mReader != null) && (mReaderBuf == -1))
@@ -167,11 +189,21 @@ namespace Emulator
             get
             {
                 DateTime now = DateTime.Now;
-                if ((mInMode == Mode.Keyboard) && (mTerminal != null) && (mKeyBuf == -1))
+                if (mInMode == Mode.Keyboard)
                 {
-                    if ((mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                    if (mKbdQueue.Count != 0)
                     {
-                        mKeyBuf = mTerminal.ReadByte() | 128;
+                        if ((mKeyBuf == -1) && ((now - mLastRead) > sKeyboardDelay))
+                        {
+                            lock (mKbdQueue) mKeyBuf = mKbdQueue.Dequeue() | 128;
+                        }
+                    }
+                    else if (mTerminal != null)
+                    {
+                        if ((mKeyBuf == -1) && (mTerminal.DataAvailable) && ((now - mLastRead) > sKeyboardDelay))
+                        {
+                            mKeyBuf = mTerminal.ReadByte() | 128;
+                        }
                     }
                 }
                 if ((mInMode == Mode.Reader) && (mReader != null) && (mReaderBuf == -1))
@@ -339,6 +371,18 @@ namespace Emulator
             }
             mPunch = new FileStream(outputFile, FileMode.Append, FileAccess.Write);
             Console.Out.Write("[+PUN]");
+        }
+
+        public void KeyIn(Char ch)
+        {
+            lock (mKbdQueue) mKbdQueue.Enqueue(ch);
+        }
+
+        public void PrtOut(Char ch)
+        {
+            Byte b = (Byte)(ch & 0xff);
+            if (mTerminal != null) mTerminal.WriteByte(b);
+            else Console.Out.Write((Char)(b));
         }
 
         private void TerminalThread()
