@@ -604,7 +604,8 @@ namespace Emulator
                         }
                         else if (c == 'o')
                         {
-                            s = 2;
+                            n = 0;
+                            s = 3;
                         }
                         else if (c == 'r')
                         {
@@ -618,7 +619,13 @@ namespace Emulator
                         }
                         else if (c == 'x')
                         {
-                            s = 3;
+                            n = 0;
+                            s = 4;
+                        }
+                        else if ((c >= '0') && (c <= '9'))
+                        {
+                            n = RadixValue(c, 10);
+                            s = 2;
                         }
                         else
                         {
@@ -627,7 +634,20 @@ namespace Emulator
                         }
                         break;
 
-                    case 2: // octal literal
+                    case 2: // decimal literal
+                        if ((c >= '0') && (c <= '9') && ((n * 10) < 255))
+                        {
+                            n = (n * 10) + RadixValue(c, 10);
+                        }
+                        else
+                        {
+                            s = 0;
+                            CPU.TTY_KeyIn((Char)(n));
+                            CPU.TTY_KeyIn(c);
+                        }
+                        break;
+
+                    case 3: // octal literal
                         if ((c >= '0') && (c <= '7') && ((n * 8) < 255))
                         {
                             n = (n * 8) + RadixValue(c, 8);
@@ -640,7 +660,7 @@ namespace Emulator
                         }
                         break;
 
-                    case 3: // hex literal
+                    case 4: // hex literal
                         if ((c >= '0') && (c <= '9') && ((n * 16) < 255))
                         {
                             n = (n * 16) + RadixValue(c, 16);
