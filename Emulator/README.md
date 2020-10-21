@@ -19,6 +19,10 @@ Peripherals other than the Console Teletype may be attached via TCP, with the
 emulator acting as a client connecting to a device server.  See "Tape Server"
 in this repository for an example.
 
+### Command-Line Options
+-g1 - enable JSON-based GUI protocol as used by https://github.com/emooreatx/SEL810GUI  
+*statefile* - preload registers and memory from *statefile*
+
 ### Commands
 a [*value*] - display A accumulator (or set if *value* given)  
 b [*value*] - display B accumulator (or set if *value* given)  
@@ -36,7 +40,7 @@ mc - master clear
 n *unit* *hostname:port* - attach device *unit* via network  
 o *filename* - write console paper tape output to *filename*  
 pc [*value*] - display program counter (or set if *value* given)  
-q [*filename*] - exit emulator, optionally saving state to *filename*  
+q [*statefile*] - exit emulator, optionally saving state to *statefile*  
 r - display registers  
 s - single-step CPU  (press *Enter* to continue)  
 t [*value*] - display sense toggle switches (or set if *value* given)  
@@ -50,8 +54,8 @@ w *addr* *len* *filename* - write *len* words at *addr* to *filename*
 *reg*- *value* - clear a breakpoint on *reg* = *value*  
 *reg*? - display breakpoints on *reg*  
 
-*value* - a 16-bit value  
-*addr* - a 15-bit address  
+*value* - a 16-bit value (prefix octal values with ' or o, hex with x)  
+*addr* - a 15-bit address (prefix octal values with ' or o, hex with x)  
 *mode*  
 1 = printer  
 2 = punch  
