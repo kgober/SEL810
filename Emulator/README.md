@@ -12,6 +12,9 @@ This is a simple emulator of a SEL810 system.  It is a work in progress, and cur
 * graphical front panel
 * built-in peripherals other than the Console Teletype (including its paper tape reader/punch)
 
+The emulator listens on TCP port 8100 for a TCP connection from a front panel
+simulator that may be used to show lights and control switches.
+
 The emulator listens on TCP port 8101 for a TCP connection from a terminal
 emulator that may used as an alternative Console Teletype keyboard and printer.
 
