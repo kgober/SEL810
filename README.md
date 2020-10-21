@@ -2,14 +2,14 @@
 A SEL810 Emulator and related tools, written in C#
 
 **Emulator**  
-The Emulator includes the SEL810 processor, memory, and the Console Teletype paper tape reader and punch.
-The emulator also provides a text-based command interface that provides similar functionality to what can
-be done using front panel indicators and switches.
+The Emulator includes the SEL810 processor, memory, and the Console Teletype (including paper tape reader and punch.)
+The emulator also provides a text-based command interface that enables and/or simplifies tasks normally requiring
+use of the front panel indicators and switches.
 
 The emulator includes a TCP server that will accept a connection on port 8101 from a terminal emulator to
-be used as the Console Teletype keyboard and printer.  
+be used as an alternative Console Teletype keyboard and printer.
 
-The emulator can connect as a TCP client to device servers that emulate other periphers.  See for example
+The emulator can connect as a TCP client to device servers that emulate other peripherals.  See for example
 the Tape Server.
 
 **Tape Server**  
