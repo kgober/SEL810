@@ -682,6 +682,15 @@ namespace Emulator
                         break;
                 }
             }
+
+            if (s == 1)
+            {
+                CPU.TTY_KeyIn('\r');
+            }
+            else if (s > 1)
+            {
+                CPU.TTY_KeyIn((Char)(n));
+            }
         }
 
         static public void ReadBP(String arg)
