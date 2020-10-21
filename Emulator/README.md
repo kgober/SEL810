@@ -1,3 +1,5 @@
+# SEL810 Emulator
+
 This is a simple emulator of a SEL810 system.  It is a work in progress, and currently **lacks** support for:
 * Power Fail Safe interrupt
 * special interrupt card
@@ -17,7 +19,59 @@ Peripherals other than the Console Teletype may be attached via TCP, with the
 emulator acting as a client connecting to a device server.  See "Tape Server"
 in this repository for an example.
 
-#### Examples
+### Commands
+a [*value*] - display A accumulator (or set if *value* given)  
+b [*value*] - display B accumulator (or set if *value* given)  
+c [*mode*] - display console output mode (or set if value given)  
+d [*addr*] - dump 8 words at *addr* (press *Enter* to continue)  
+e [*addr*] *op* [*arg*] - enter instruction at *addr*  
+f - force ready (release I/O hold)  
+g [*addr*] - start CPU (setting PC to *addr* if given)  
+h - halt CPU  
+ir [*value*] - display instruction register (or set if *value* given)  
+i *filename* - read console paper tape input from *filename*  
+k *input* - queue *input* as if had been typed at console keyboard  
+l [*addr*] *filename* - load memory from *filename* at *addr* (default 0)  
+mc - master clear  
+n *unit* *hostname:port* - attach device *unit* via network  
+o *filename* - write console paper tape output to *filename*  
+pc [*value*] - display program counter (or set if *value* given)  
+q [*filename*] - exit emulator, optionally saving state to *filename*  
+r - display registers  
+s - single-step CPU  (press *Enter* to continue)  
+t [*value*] - display sense toggle switches (or set if *value* given)  
+u [*addr*] - display instruction at *addr* (press *Enter* to continue)  
+v - toggle verbose mode (shows OVF and IOH indicators)  
+w *addr* *len* *filename* - write *len* words at *addr* to *filename*  
+= [*addr*] *value* - write *value* to memory at *addr* (press *Enter* to continue)  
+. [*addr* [*count*]] - set a read breakpoint at *addr*  
+! [*addr* [*count*]] - set a write breakpoint at *addr*  
+*reg*+ *value* - set a breakpoint on *reg* = *value*  
+*reg*- *value* - clear a breakpoint on *reg* = *value*  
+*reg*? - display breakpoints on *reg*  
+
+*value* - a 16-bit value  
+*addr* - a 15-bit address  
+*mode*  
+1 = printer  
+2 = punch  
+3 = both  
+*input* - a sequence of characters.  permitted escapes:  
+\\ - CR (^M) if given as the last character of *input*  
+\\\\ - backslash (\\)  
+\\a - BEL (^G)  
+\\b - BS (^H)  
+\\e - ESC (^\[)  
+\\f - FF (^L)  
+\\n - LF (^J)  
+\\o*ddd* - a byte value given in octal  
+\\r - CR (^M)  
+\\t - TAB (^I)  
+\\x*dd* - a byte value given in hexadecimal  
+\\*ddd* - a byte value given in decimal  
+\\*C* - any other escaped character *C* represents itself  
+
+### Examples
 Start the emulator and 'toggle in' the bootstrap at location 0:
 > C:\\>**Emulator.exe**  
 > 810A>**= 0 '130101**  
