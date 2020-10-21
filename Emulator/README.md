@@ -8,10 +8,10 @@ This is a simple emulator of a SEL810 system.  It is a work in progress, and cur
 * Input/Output Parity (Option 81-210B)
 * 60Hz Real-Time Clock (Option 81-031B)
 * graphical front panel
-* built-in peripherals other than the Console Teletype paper tape reader/punch
+* built-in peripherals other than the Console Teletype (including its paper tape reader/punch)
 
 The emulator listens on TCP port 8101 for a TCP connection from a terminal
-emulator to be used as the Console Teletype keyboard and printer.
+emulator that may used as an alternative Console Teletype keyboard and printer.
 
 Peripherals other than the Console Teletype may be attached via TCP, with the
 emulator acting as a client connecting to a device server.  See "Tape Server"
