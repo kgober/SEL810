@@ -144,8 +144,8 @@ namespace Emulator
                 }
                 if ((!mInt_In) && (!mInt_Out)) return null;
                 mInterrupts[0] = 0;
-                if (mInt_In) mInterrupts[0] |= 2;
-                if (mInt_Out) mInterrupts[0] |= 1;
+                if (mInt_In) mInterrupts[0] |= 0x400;
+                if (mInt_Out) mInterrupts[0] |= 0x800;
                 return mInterrupts;
             }
         }

@@ -68,7 +68,7 @@ namespace Emulator
         private UInt16[] mIntActive = new UInt16[9]; // interrupt active
         private Boolean mTOI, mIntBlocked;
         private Int32 mIntGroup = 8;
-        private Int32 mIntLevel = 0;
+        private Int32 mIntLevel = 1;
         private UInt16 mIntMask = 0;
 
         private Int16[] mBPR = new Int16[CORE_SIZE];
@@ -1051,12 +1051,12 @@ namespace Emulator
             {
                 if (mIntActive[i] == 0) continue;
                 UInt16 A = mIntActive[i];
-                mask = 0x800;
+                mask = 1;
                 Int32 lev = 1;
-                while (mask != 0)
+                while (mask != 0x1000)
                 {
                     if ((A & mask) != 0) break;
-                    mask >>= 1;
+                    mask <<= 1;
                     lev++;
                 }
                 mIntGroup = i;
@@ -1065,7 +1065,7 @@ namespace Emulator
                 return;
             }
             mIntGroup = 8;
-            mIntLevel = 0;
+            mIntLevel = 1;
             mIntMask = 0;
             ClearInterrupt();
         }
@@ -1092,29 +1092,23 @@ namespace Emulator
                 {
                     UInt16 mask = (UInt16)(mIntRequest[grp] & mIntEnabled[grp]);
                     if (mask == 0) continue;
-                    if ((grp < mIntGroup) || ((mask & ~mIntMask) > mIntMask))
+                    if ((grp < mIntGroup) || ((mask & ((1 << (mIntLevel - 1)) - 1)) != 0)) 
                     {
                         // set new active interrupt group/level
                         mIntGroup = grp;
-                        mIntMask = 0x800;
-                        while (mIntMask > 0)
+                        mIntMask = 1;
+                        mIntLevel = 1;
+                        while (mIntMask != 0x1000)
                         {
                             if ((mask & mIntMask) != 0) break;
-                            mIntMask >>= 1;
+                            mIntMask <<= 1;
+                            mIntLevel++;
                         }
                         mIntActive[mIntGroup] |= mIntMask;
 
                         // select interrupt vector
-                        Int32 ea = 514 + mIntGroup * 16;
+                        Int32 ea = 514 + mIntGroup * 16 + mIntLevel - 1;
                         if (mIntGroup > 2) ea += 16; // skip '1060 range used by BTC
-                        mask = mIntMask;
-                        mIntLevel = 1;
-                        while ((mask & 0x800) == 0)
-                        {
-                            mIntLevel++;
-                            ea++;
-                            mask <<= 1;
-                        }
                         SetInterrupt(mIntGroup, mIntLevel);
 
                         // execute SPB* instruction
