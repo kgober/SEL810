@@ -129,12 +129,14 @@ namespace Tape_Server
                                 buf[0] = (Byte)'-'; // just send '-' if no interrupts requested
                                 n = 1;
                             }
-                            else // otherwise send 96 bits as 24 4-bit hex digits
+                            else
                             {
-                                for (Int32 i = 0; i < 24; i++) buf[i] = (Byte)'0';
-                                if (rdr_int) buf[2] |= 2; // group 0, level 11
-                                if (pun_int) buf[2] |= 1; // group 0, level 12
-                                n = 24;
+                                n = 0;
+                                if (rdr_int) n |= 4; // group 0, level 11
+                                if (pun_int) n |= 8; // group 0, level 12
+                                buf[0] = BinaryToHex(n);
+                                buf[1] = (Byte)'-'; // all remaining digits are 0
+                                n = 2;
                             }
                             p = 0;
                             while (n > 0)
