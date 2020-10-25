@@ -22,6 +22,11 @@
 
 // To Do:
 // * Auto Start: see p.64 of http://vtda.org/docs/computing/SEL/SEL_810ASchool_1971.pdf
+// * Compact state file (omit trailing nulls)
+// * include more state in state file
+// * SEL810A vs SEL810B differences
+// * use stdout only for console printer output
+// * use ':' to display memory or registers
 
 
 using System;
@@ -1570,17 +1575,17 @@ namespace Emulator
             }
         }
 
-        // fmt 0 = 000000ddddcccccc
+        // fmt 0 = 000000ddddcccccc                  (Arg=0: dddd=0, Arg=1: dddd=arg)
         // fmt 1 = 00000IM000cccccc XIaaaaaaaaaaaaaa
         // fmt 2 = XIaaaaaaaaaaaaaa
-        // fmt 3 = 10110IMccWuuuuuu dddddddddddddddd
-        // fmt 4 = 10110IMccWuuuuuu
+        // fmt 3 = 10110IMccWuuuuuu dddddddddddddddd (Arg=0: uuuuuu=0, Arg=1: uuuuuu=arg)
+        // fmt 4 = 10110IMccWuuuuuu                  (Arg=0: uuuuuu=0, Arg=1: uuuuuu=arg)
         // fmt 5 = 10110IM11Wcccccc dddddddddddddddd
         // fmt 6 = ccccXIMaaaaaaaaa
-        // fmt 7 = 11110IMccWuuuuuu dddddddddddddddd
-        // fmt 8 = 1111RIMccWuuuuuu
-        // fmt 9 = 0000000000cccccc 0aaaaaaaaaaaaaaa
-        // fmt 10= dddddddddddddddd
+        // fmt 7 = 11110IMccWuuuuuu dddddddddddddddd (Arg=0: uuuuuu=0, Arg=1: uuuuuu=arg)
+        // fmt 8 = 1111RIMccWuuuuuu                  (Arg=0: uuuuuu=0, Arg=1: uuuuuu=arg)
+        // fmt 9 = 0000000000cccccc 0aaaaaaaaaaaaaaa (Arg=0: aa...a=0, Arg=1: aa...a=arg)
+        // fmt 10= dddddddddddddddd                  (Arg=0: 0<=arg<=65535, Arg=1: 0<=arg<=32767)
         static Op[] Ops = {
             new Op("DAC", 2, 0, 0),
             new Op("EAC", 10, 0, 1),
