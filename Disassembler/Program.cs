@@ -52,16 +52,17 @@ namespace Disassembler
 
         static void Main(String[] args)
         {
-            Int32 addr = 0;
-            Int32 p, q = 0;
+            Int32 start = 0;
+            Int32 p = 32768, q = 0;
 
             if (args.Length == 0)
             {
-                Console.Error.WriteLine("Usage: Disassemble [options] dumpfile ...");
+                Console.Error.WriteLine("Usage: Disassemble option ...");
                 Console.Error.WriteLine("Options:");
                 Console.Error.WriteLine("  -e addr - tag 'addr' as a program entry point");
-                Console.Error.WriteLine("  -l addr - load following dump file(s) at 'addr'");
-                Console.Error.WriteLine("dump files should be core images, not tape files");
+                Console.Error.WriteLine("  -i addr imagefile - load core image file at 'addr'");
+                Console.Error.WriteLine("  -a tapefile - load absolute tape file");
+                Console.Error.WriteLine("  -s num - skip first 'num' bytes of next file");
                 return;
             }
 
@@ -82,22 +83,48 @@ namespace Disassembler
                         if (arg.Length == 0) arg = args[ap++];
                         ENTRY.Add(Int32.Parse(arg));
                     }
-                    else if ((arg[1] == 'l') || (arg[1] == 'L'))
+                    else if ((arg[1] == 'i') || (arg[1] == 'I'))
                     {
                         arg = arg.Substring(2);
                         if (arg.Length == 0) arg = args[ap++];
-                        addr = Int32.Parse(arg);
+                        Int32 addr = Int32.Parse(arg);
+                        arg = args[ap++];
+                        Byte[] buf = File.ReadAllBytes(arg);
+                        Int32 end;
+                        if (LoadImage(buf, start, addr, out end))
+                        {
+                            if (addr < p) p = addr;
+                            if (end > q) q = end;
+                        }
+                        start = 0;
+                    }
+                    else if ((arg[1] == 'a') || (arg[1] == 'A'))
+                    {
+                        arg = arg.Substring(2);
+                        if (arg.Length == 0) arg = args[ap++];
+                        Byte[] buf = File.ReadAllBytes(arg);
+                        Int32 addr, end;
+                        if (LoadAbsolute(buf, start, out addr, out end))
+                        {
+                            if (addr < p) p = addr;
+                            if (end > q) q = end;
+                        }
+                        start = 0;
+                    }
+                    else if ((arg[1] == 's') || (arg[1] == 'S'))
+                    {
+                        arg = arg.Substring(2);
+                        if (arg.Length == 0) arg = args[ap++];
+                        start = Int32.Parse(arg);
                     }
                     else
                     {
-                        // unrecognized option, ignore for now
+                        Console.Error.WriteLine("Unrecognized option: {0}", arg);
                     }
                 }
                 else
                 {
-                    Byte[] buf = File.ReadAllBytes(arg);
-                    Int32 end = Load(addr, buf);
-                    if (end > q) q = end;
+                    Console.Error.WriteLine("Unrecognized option: {0}", arg);
                 }
             }
 
@@ -124,8 +151,10 @@ namespace Disassembler
             foreach (Fragment frag in FRAGS) DoLabels(frag);
 
             // generate listing
-            for (p = addr; p < q; p++)
+            Fragment current = FindFragment(p);
+            while (p < q)
             {
+                Fragment frag = FindFragment(p);
                 UInt16 word = CORE[p];
                 String label = CLABEL[p];
                 if (label == null) label = DLABEL[p];
@@ -142,18 +171,20 @@ namespace Disassembler
                     OUT.WriteLine();
                     OUT.WriteLine();
                 }
-                else if (IsFragmentStart(p))
+                else if (frag != current)
                 {
                     OUT.WriteLine();
                 }
                 OUT.WriteLine("{0}  {1:x4}[{2}{3}]{4}  {5,-9} {6}", Octal(p), word, ASCII(word >> 8), ASCII(word), Octal(word, 6), label, text);
+                current = frag;
+                p++;
             }
         }
 
-        static Int32 Load(Int32 addr, Byte[] buf)
+        static Boolean LoadImage(Byte[] buf, Int32 startAt, Int32 loadStart, out Int32 loadEnd)
         {
-            Int32 p = addr;
-            Int32 q = 0;
+            Int32 p = loadStart;
+            Int32 q = startAt;
             while (q < buf.Length)
             {
                 CORE[p] &= 0x00ff;
@@ -165,7 +196,45 @@ namespace Disassembler
                 }
                 p++;
             }
-            return p;
+            loadEnd = p;
+            return true;
+        }
+
+        static Boolean LoadAbsolute(Byte[] buf, Int32 startAt, out Int32 loadStart, out Int32 loadEnd)
+        {
+            loadStart = 32768;
+            loadEnd = -1;
+            Int32 p = startAt;
+            while ((p < buf.Length) && (buf[p] != 0xff)) p++; // skip leader
+            if ((p++ + 4) >= buf.Length) return false;
+            Int32 addr = buf[p++] << 8;
+            addr |= buf[p++];
+            Int32 len = -1;
+            for (Int32 i = 0; i < 2; i++) len = (len << 8) | buf[p++];
+            len = -len;
+            if ((p + len * 2 + (len + 63) / 32 + 2) >= buf.Length) return false;
+            for (Int32 i = 0; i < len; i += 64)
+            {
+                Int32 sum = 0;
+                for (Int32 j = 0; j < 64; j++)
+                {
+                    if ((i + j) == len) break;
+                    CORE[addr + i + j] = (UInt16)(buf[p++] << 8);
+                    CORE[addr + i + j] |= buf[p++];
+                    sum += CORE[addr + i + j];
+                }
+                sum &= 0xffff;
+                UInt16 checksum = (UInt16)(buf[p++] << 8);
+                checksum |= buf[p++];
+                if (sum != checksum)
+                {
+                    Console.Error.WriteLine("Checksum mismatch");
+                    return false;
+                }
+            }
+            loadStart = addr;
+            loadEnd = addr + len;
+            return true;
         }
 
         class Fragment
