@@ -20,6 +20,13 @@
 // SOFTWARE.
 
 
+// To Do:
+// Consider merging adjacent fragments
+// Allow a non-instruction after SPB (inline argument)
+// Identify reachable code
+// Generate references for reads and writes
+
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,11 +37,13 @@ namespace Disassembler
     enum Tag : byte
     {
         None        = 0x00,
-        Call        = 0x01, // target of a call (SPB)
-        Direct      = 0x02, // direct data
-        Indirect    = 0x04, // indirect data
-        Extended    = 0x08, // extended address
-        Map         = 0x10, // instruction map bit set
+        Read        = 0x01, // read from
+        Write       = 0x02, // written to
+        Direct      = 0x04, // direct data
+        Indirect    = 0x08, // indirect data
+        Extended    = 0x10, // extended address
+        Map         = 0x20, // instruction map bit set
+        Call        = 0x40, // target of a call (SPB)
         EntryPoint  = 0x80, // program entry point
     }
 
@@ -160,13 +169,8 @@ namespace Disassembler
                 if (label == null) label = DLABEL[p];
                 if (label != null) label = String.Concat(label, ":");
                 String text = Decode(p, word);
-                if ((TAGS[p] & Tag.EntryPoint) != 0)
-                {
-                    OUT.WriteLine();
-                    OUT.WriteLine();
-                    text = String.Format("{0,-16}; *** ENTRY POINT ***", text);
-                }
-                else if ((TAGS[p] & Tag.Call) != 0)
+                if ((TAGS[p] & Tag.Call) != 0) TAGS[p] &= ~(Tag.Read | Tag.Indirect);
+                if ((TAGS[p] & (Tag.Call | Tag.EntryPoint)) != 0)
                 {
                     OUT.WriteLine();
                     OUT.WriteLine();
@@ -175,6 +179,7 @@ namespace Disassembler
                 {
                     OUT.WriteLine();
                 }
+                if (TAGS[p] != Tag.None) text = String.Format("{0,-16}; {1}", text, TAGS[p].ToString());
                 OUT.WriteLine("{0}  {1:x4}[{2}{3}]{4}  {5,-9} {6}", Octal(p), word, ASCII(word >> 8), ASCII(word), Octal(word, 6), label, text);
                 current = frag;
                 p++;
@@ -516,6 +521,7 @@ namespace Disassembler
                         Boolean map = ((word & 0x200) != 0);
                         Int32 target = (ind) ? Indirect(addr, map) : addr;
                         if ((ind) && (DLABEL[target] == null)) DLABEL[target] = String.Concat("D", Octal(target));
+                        TAGS[target] |= (op == 36) ? Tag.Write : Tag.Read;
                         if (map) TAGS[addr] |= Tag.Map;
                         TAGS[addr++] |= (ind) ? Tag.Indirect : Tag.Direct;
                     }
@@ -529,10 +535,11 @@ namespace Disassembler
                         Boolean map = ((word & 0x200) != 0);
                         Int32 target = (ind) ? Indirect(addr, map) : addr;
                         if ((ind) && (DLABEL[target] == null)) DLABEL[target] = String.Concat("D", Octal(target));
+                        TAGS[target] |= Tag.Read;
                         if (map) TAGS[addr] |= Tag.Map;
                         TAGS[addr++] |= (ind) ? Tag.Indirect : Tag.Direct;
                     }
-                    else if (op != 4) TAGS[addr++] |= Tag.Direct; // PIE, PID operand
+                    else if (op != 4) TAGS[addr++] |= Tag.Direct | Tag.Read; // PIE, PID operand
                 }
                 else if (op == 15) // augmented 17 instructions
                 {
@@ -542,6 +549,7 @@ namespace Disassembler
                         Boolean map = ((word & 0x200) != 0);
                         Int32 target = (ind) ? Indirect(addr, map) : addr;
                         if ((ind) && (DLABEL[target] == null)) DLABEL[target] = String.Concat("D", Octal(target));
+                        TAGS[target] |= ((word & 0x80) == 0) ? Tag.Write : Tag.Read;
                         if (map) TAGS[addr] |= Tag.Map;
                         TAGS[addr++] |= (ind) ? Tag.Indirect : Tag.Direct;
                     }
@@ -564,6 +572,9 @@ namespace Disassembler
                 {
                     Int32 target = EA(addr - 1, word);
                     if (DLABEL[target] == null) DLABEL[target] = String.Concat("D", Octal(target));
+                    if ((op == 3) || (op == 4)) TAGS[target] |= Tag.Write; // STA, STB
+                    else if (op == 12) TAGS[target] |= Tag.Read | Tag.Write; // IMS
+                    else TAGS[target] |= Tag.Read;
                 }
             }
         }
@@ -788,7 +799,7 @@ namespace Disassembler
             do
             {
                 DLABEL[addr] = String.Concat("I", Octal(addr));
-                TAGS[addr] |= Tag.Indirect;
+                TAGS[addr] |= Tag.Indirect | Tag.Read;
                 Int32 word = CORE[addr];
                 ind = ((word & 0x4000) != 0);
                 addr = word & 0x3fff;
