@@ -34,17 +34,27 @@ using System.IO;
 namespace Disassembler
 {
     [Flags]
-    enum Tag : byte
+    enum CTag : byte
     {
         None        = 0x00,
-        Read        = 0x01, // read from
-        Write       = 0x02, // written to
-        Direct      = 0x04, // direct data
-        Indirect    = 0x08, // indirect data
-        Extended    = 0x10, // extended address
-        Map         = 0x20, // instruction map bit set
-        Call        = 0x40, // target of a call (SPB)
-        EntryPoint  = 0x80, // program entry point
+        Valid       = 0x01, // this is a valid opcode
+        Branch      = 0x02, // target of a branch (BRU, LOB)
+        Call        = 0x04, // target of a call (SPB)
+        EntryPoint  = 0x08, // program entry point
+    }
+
+    [Flags]
+    enum DTag : byte
+    {
+        None        = 0x00,
+        Read        = 0x01, // an instruction reads from this address
+        Write       = 0x02, // in instruction writes to this address
+        Indirect    = 0x04, // this is an indirect address word (DAC)
+        Extended    = 0x08, // this is an extended address word (EAC)
+        Map0        = 0x10, // Map was set for indirect, from lower half of memory
+        Map1        = 0x20, // Map was set for indirect, from upper half of memory
+        Immediate   = 0x40, // this is an immediate operand
+        Address     = 0x80, // this is an address operand
     }
 
     class Program
@@ -52,9 +62,8 @@ namespace Disassembler
         static TextWriter OUT = Console.Out;
 
         static UInt16[] CORE = new UInt16[32768];   // core memory image
-        static String[] CLABEL = new String[32768]; // code labels
-        static String[] DLABEL = new String[32768]; // data labels
-        static Tag[] TAGS = new Tag[32768];         // address tags
+        static CTag[] CTAG = new CTag[32768];       // code tags
+        static DTag[] DTAG = new DTag[32768];       // data tags
 
         static List<Int32> ENTRY = new List<Int32>();
         static List<Fragment> FRAGS = new List<Fragment>();
@@ -138,7 +147,7 @@ namespace Disassembler
             }
 
             // identify code fragments (sequences of valid instructions terminated by HLT, LOB, or BRU)
-            FindFragments();
+            IdentifyFragments();
 
             // identify jumps between fragments
             foreach (Fragment frag in FRAGS) Connect(frag);
@@ -146,7 +155,7 @@ namespace Disassembler
             // ensure entry points can't be considered dead
             foreach (Int32 entry in ENTRY)
             {
-                TAGS[entry] |= Tag.EntryPoint;
+                CTAG[entry] |= CTag.EntryPoint;
                 Fragment frag = FindFragment(entry);
                 if (frag != null) frag.Source.Add(frag);
             }
@@ -156,8 +165,8 @@ namespace Disassembler
             foreach (Fragment frag in FRAGS) if ((frag.Source.Count == 0) && (frag.Target.Count == 0)) L.Add(frag);
             foreach (Fragment frag in L) FRAGS.Remove(frag);
 
-            // generate labels
-            foreach (Fragment frag in FRAGS) DoLabels(frag);
+            // assign tags
+            foreach (Fragment frag in FRAGS) AssignTags(frag);
 
             // generate listing
             Fragment current = FindFragment(p);
@@ -165,12 +174,9 @@ namespace Disassembler
             {
                 Fragment frag = FindFragment(p);
                 UInt16 word = CORE[p];
-                String label = CLABEL[p];
-                if (label == null) label = DLABEL[p];
-                if (label != null) label = String.Concat(label, ":");
-                String text = Decode(p, word);
-                if ((TAGS[p] & Tag.Call) != 0) TAGS[p] &= ~(Tag.Read | Tag.Indirect);
-                if ((TAGS[p] & (Tag.Call | Tag.EntryPoint)) != 0)
+                String label = Label(p, false);
+                String text = Disassemble(p, word);
+                if (CTagIs(p, CTag.Call) || CTagIs(p, CTag.EntryPoint))
                 {
                     OUT.WriteLine();
                     OUT.WriteLine();
@@ -179,7 +185,6 @@ namespace Disassembler
                 {
                     OUT.WriteLine();
                 }
-                if (TAGS[p] != Tag.None) text = String.Format("{0,-16}; {1}", text, TAGS[p].ToString());
                 OUT.WriteLine("{0}  {1:x4}[{2}{3}]{4}  {5,-9} {6}", Octal(p), word, ASCII(word >> 8), ASCII(word), Octal(word, 6), label, text);
                 current = frag;
                 p++;
@@ -272,8 +277,8 @@ namespace Disassembler
             }
         }
 
-        // find code fragments (sequences of valid instructions terminated by HLT, LOB, or BRU)
-        static void FindFragments()
+        // identify code fragments (sequences of valid instructions terminated by HLT, LOB, or BRU)
+        static void IdentifyFragments()
         {
             Fragment frag;
             Int32 start = 0;
@@ -291,6 +296,8 @@ namespace Disassembler
             }
         }
 
+        // look for a sequence of valid instructions starting at 'start'
+        // applies 'Valid' code tags
         static Fragment TryFragment(Int32 start)
         {
             Int32 limit = 32768;
@@ -298,7 +305,7 @@ namespace Disassembler
             Int32 addr = start;
             while (addr < limit)
             {
-                UInt16 word = CORE[addr++];
+                UInt16 word = CORE[addr];
                 Int32 op = (word >> 12) & 15;
                 if (op == 0) // augmented 00 instructions
                 {
@@ -307,40 +314,48 @@ namespace Disassembler
                     if (op == 0) // HLT
                     {
                         if (sc != 0) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         limit = addr;
                     }
                     else if (op == 30) // LOB
                     {
                         if (sc != 0) return null;
-                        if (CORE[addr++] >= 32768) return null;
+                        if (CORE[addr + 1] >= 32768) return null;
+                        CTAG[addr++] |= CTag.Valid;
+                        addr++; // operand
                         limit = addr;
                     }
                     else if ((op == 36) || (op == 37) || (op == 36 + 64) || (op == 37 + 64)) // STX, LIX
                     {
                         if ((sc != 0) && (sc != 8)) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         addr++; // operand
                     }
                     else if (op == 17) // SAS
                     {
                         if (sc != 0) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         min = addr + 3;
                     }
                     else if (((op >= 18) && (op <= 22)) || (op == 26) || (op == 40)) // SAZ, SAN, SAP, SOF, IBS, SNO, SXB
                     {
                         if (sc != 0) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         min = addr + 2;
                     }
                     else if (op == 41) // IXS
                     {
+                        CTAG[addr++] |= CTag.Valid;
                         min = addr + 2;
                     }
                     else if ((op >= 8) && (op <= 15)) // RSA, LSA, FRA, FLL, FRL, RSL, LSL, FLA
                     {
-                        // valid with any shift count, do nothing
+                        CTAG[addr++] |= CTag.Valid;
                     }
                     else if ((op >= 1) && (op <= 43)) // all others
                     {
                         if (sc != 0) return null;
+                        CTAG[addr++] |= CTag.Valid;
                     }
                     else
                     {
@@ -355,24 +370,28 @@ namespace Disassembler
                     if ((op == 0) || (op == 2)) // CEU (skip mode), TEU
                     {
                         if (mod == 1) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         addr++; // operand
                         min = addr + 2;
                     }
                     else if (op == 1) // CEU (wait mode)
                     {
                         if (mod == 1) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         addr++; // operand
                     }
                     else if (op == 4) // SNS
                     {
                         if (mod != 0) return null;
                         if (unit > 15) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         min = addr + 2;
                     }
                     else if (op == 6) // PIE, PID
                     {
                         if (mod != 0) return null;
                         if (unit > 1) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         addr++; // operand
                     }
                     else
@@ -388,54 +407,73 @@ namespace Disassembler
                     if ((op == 0) || (op == 2) || (op == 2 + 8)) // AOP (skip mode), AIP (skip mode), AIP (merge, skip mode)
                     {
                         if (mod != 0) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         min = addr + 2;
                     }
                     else if ((op == 1) || (op == 3) || (op == 3 + 8)) // AOP (wait mode), AIP (wait mode), AIP (merge, wait mode)
                     {
                         if (mod != 0) return null;
+                        CTAG[addr++] |= CTag.Valid;
                     }
                     else if ((op == 4) || (op == 6)) // MOP (skip mode), MIP (skip mode)
                     {
                         if (mod == 1) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         addr++; // operand
                         min = addr + 2;
                     }
                     else if ((op == 5) || (op == 7)) // MOP (wait mode), MIP (wait mode)
                     {
                         if (mod == 1) return null;
+                        CTAG[addr++] |= CTag.Valid;
                         addr++; // operand
+                    }
+                    else
+                    {
+                        return null;
                     }
                 }
                 else if (op == 9) // BRU
                 {
+                    CTAG[addr++] |= CTag.Valid;
                     limit = addr;
                 }
                 else if (op == 10) // SPB
                 {
+                    CTAG[addr++] |= CTag.Valid;
                     min = addr + 1;
                 }
                 else if (op == 12) // IMS
                 {
+                    CTAG[addr++] |= CTag.Valid;
                     // if IMS nnn is followed by BRU* nnn, assume nnn contains an address and the skip doesn't happen
                     if (((word & 0xfc00) == 0xc000) && ((CORE[addr] & 0xfc00) == 0x9400) && ((word & 0x3ff) == (CORE[addr] & 0x3ff))) min = addr + 1; 
                     else min = addr + 2;
                 }
                 else if (op == 13) // CMA
                 {
+                    CTAG[addr++] |= CTag.Valid;
                     min = addr + 3;
+                }
+                else
+                {
+                    CTAG[addr++] |= CTag.Valid;
                 }
                 if (limit < min) limit = 32768;
             }
             return new Fragment(start, limit - start);
         }
 
+        // find fragments jumped to by this fragment
+        // applies Branch and Call code tags, and adjusts fragments to include SPB return address
         static void Connect(Fragment frag)
         {
             Int32 addr = frag.Start;
             Int32 limit = frag.Start + frag.Length;
             while (addr < limit)
             {
-                UInt16 word = CORE[addr++];
+                UInt16 word = CORE[addr];
+                if (!CTagIs(addr++, CTag.Valid)) continue; // skip over operands
                 Int32 op = (word >> 12) & 15;
                 if (op == 0) // augmented 00 instructions
                 {
@@ -443,34 +481,28 @@ namespace Disassembler
                     if (op == 30) // LOB
                     {
                         Int32 target = CORE[addr++];
+                        CTAG[target] |= CTag.Branch;
                         Fragment tf = FindFragment(target);
-                        if ((tf != null) && (tf != frag)) Connect(frag, tf);
+                        if (tf == null) continue;
+                        if (tf != frag) Connect(frag, tf);
                     }
-                    else if ((op == 36) || (op == 37)) // STX, LIX
-                    {
-                        addr++; // operand
-                    }
-                }
-                else if (op == 11) // augmented 13 instructions
-                {
-                    op = (word >> 6) & 7;
-                    if (op != 4) addr++; // CEU, TEU, PIE, PID operands
-                }
-                else if (op == 15) // augmented 17 instructions
-                {
-                    if ((word & 0x0100) != 0) addr++; // MOP, MIP operands
                 }
                 else if (op == 9) // BRU
                 {
-                    Int32 target = EA(addr - 1, word);
+                    Int32 target = MemOpAddr(addr - 1, word);
+                    CTAG[target] |= CTag.Branch;
                     Fragment tf = FindFragment(target);
-                    if ((tf != null) && (tf != frag)) Connect(frag, tf);
+                    if (tf == null) continue;
+                    if (tf != frag) Connect(frag, tf);
                 }
                 else if (op == 10) // SPB
                 {
-                    Int32 target = EA(addr - 1, word) + 1;
-                    Fragment tf = FindFragment(target);
-                    if ((tf != null) && (tf != frag)) Connect(frag, tf);
+                    Int32 target = MemOpAddr(addr - 1, word);
+                    CTAG[target] |= CTag.Call;
+                    Fragment tf = FindFragment(target + 1);
+                    if (tf == null) continue;
+                    if (tf != frag) Connect(frag, tf);
+                    if (FindFragment(target) == null) tf.AdjustStart(-1);
                 }
             }
         }
@@ -497,111 +529,177 @@ namespace Disassembler
             return null;
         }
 
-        // assign labels to references and tag operands
-        static void DoLabels(Fragment frag)
+        static Boolean CTagIs(Int32 addr, CTag flags)
+        {
+            return CTagIs(CTAG[addr], flags);
+        }
+
+        static Boolean CTagIs(CTag tag, CTag flags)
+        {
+            if (flags == CTag.None) return (tag == flags);
+            return ((tag & flags) == flags);
+        }
+
+        static Boolean DTagIs(Int32 addr, DTag flags)
+        {
+            return DTagIs(DTAG[addr], flags);
+        }
+
+        static Boolean DTagIs(DTag tag, DTag flags)
+        {
+            if (flags == DTag.None) return (tag == flags);
+            return ((tag & flags) == flags);
+        }
+
+        // assign data tags to locations referenced by a fragment
+        static void AssignTags(Fragment frag)
         {
             Int32 addr = frag.Start;
             Int32 limit = frag.Start + frag.Length;
             while (addr < limit)
             {
                 UInt16 word = CORE[addr++];
+                if (!CTagIs(addr - 1, CTag.Valid)) continue; // skip over operands
+                if (CTagIs(addr - 1, CTag.Call)) continue; // skip saved PC
                 Int32 op = (word >> 12) & 15;
                 if (op == 0) // augmented 00 instructions
                 {
                     op = word & 63;
                     if (op == 30) // LOB
                     {
-                        Int32 target = CORE[addr];
-                        CLABEL[target] = String.Concat("L", Octal(target));
-                        TAGS[addr++] |= Tag.Extended;
+                        DTAG[addr++] |= DTag.Extended;
                     }
-                    else if ((op == 36) || (op == 37)) // STX, LIX
+                    else if (op == 36) // STX
                     {
                         Boolean ind = ((word & 0x400) != 0);
                         Boolean map = ((word & 0x200) != 0);
-                        Int32 target = (ind) ? Indirect(addr, map) : addr;
-                        if ((ind) && (DLABEL[target] == null)) DLABEL[target] = String.Concat("D", Octal(target));
-                        TAGS[target] |= (op == 36) ? Tag.Write : Tag.Read;
-                        if (map) TAGS[addr] |= Tag.Map;
-                        TAGS[addr++] |= (ind) ? Tag.Indirect : Tag.Direct;
+                        Int32 target = (ind) ? AugOpAddr(addr, map) : addr;
+                        if (ind) DTAG[target] |= DTag.Write;
+                        DTAG[addr++] |= (ind) ? DTag.Address : DTag.Immediate;
+                    }
+                    else if (op == 37) // LIX
+                    {
+                        Boolean ind = ((word & 0x400) != 0);
+                        Boolean map = ((word & 0x200) != 0);
+                        Int32 target = (ind) ? AugOpAddr(addr, map) : addr;
+                        if (ind) DTAG[target] |= DTag.Read;
+                        DTAG[addr++] |= (ind) ? DTag.Address : DTag.Immediate;
                     }
                 }
                 else if (op == 11) // augmented 13 instructions
                 {
                     op = (word >> 6) & 7;
-                    if (op < 3) // CEU, TEU
+                    if (op <= 2) // CEU, TEU
                     {
                         Boolean ind = ((word & 0x400) != 0);
                         Boolean map = ((word & 0x200) != 0);
-                        Int32 target = (ind) ? Indirect(addr, map) : addr;
-                        if ((ind) && (DLABEL[target] == null)) DLABEL[target] = String.Concat("D", Octal(target));
-                        TAGS[target] |= Tag.Read;
-                        if (map) TAGS[addr] |= Tag.Map;
-                        TAGS[addr++] |= (ind) ? Tag.Indirect : Tag.Direct;
+                        Int32 target = (ind) ? AugOpAddr(addr, map) : addr;
+                        if (ind) DTAG[target] |= DTag.Read;
+                        DTAG[addr++] |= (ind) ? DTag.Address : DTag.Immediate;
                     }
-                    else if (op != 4) TAGS[addr++] |= Tag.Direct | Tag.Read; // PIE, PID operand
+                    else if (op == 6) // PIE, PID
+                    {
+                        DTAG[addr++] |= DTag.Immediate;
+                    }
                 }
                 else if (op == 15) // augmented 17 instructions
                 {
-                    if ((word & 0x0100) != 0) // MOP, MIP
+                    op = (word >> 6) & 7;
+                    if ((op == 4) || (op == 5)) // MOP
                     {
                         Boolean ind = ((word & 0x400) != 0);
                         Boolean map = ((word & 0x200) != 0);
-                        Int32 target = (ind) ? Indirect(addr, map) : addr;
-                        if ((ind) && (DLABEL[target] == null)) DLABEL[target] = String.Concat("D", Octal(target));
-                        TAGS[target] |= ((word & 0x80) == 0) ? Tag.Write : Tag.Read;
-                        if (map) TAGS[addr] |= Tag.Map;
-                        TAGS[addr++] |= (ind) ? Tag.Indirect : Tag.Direct;
+                        Int32 target = (ind) ? AugOpAddr(addr, map) : addr;
+                        if (ind) DTAG[target] |= DTag.Read;
+                        DTAG[addr++] |= (ind) ? DTag.Address : DTag.Immediate;
+                    }
+                    else if ((op == 6) || (op == 7)) // MIP
+                    {
+                        Boolean ind = ((word & 0x400) != 0);
+                        Boolean map = ((word & 0x200) != 0);
+                        Int32 target = (ind) ? AugOpAddr(addr, map) : addr;
+                        if (ind) DTAG[target] |= DTag.Write;
+                        DTAG[addr++] |= (ind) ? DTag.Address : DTag.Immediate;
                     }
                 }
-                else if (op == 9) // BRU
+                else // memory reference instructions
                 {
-                    Int32 target = EA(addr - 1, word);
-                    CLABEL[target] = String.Concat("L", Octal(target));
-                }
-                else if (op == 10) // SPB
-                {
-                    Int32 target = EA(addr - 1, word);
-                    CLABEL[target] = String.Concat("S", Octal(target));
-                    TAGS[target] |= Tag.Call;
-                    Fragment lf = FindFragment(target);
-                    Fragment tf = FindFragment(target + 1);
-                    if ((lf == null) && (tf != null)) tf.AdjustStart(-1);
-                }
-                else
-                {
-                    Int32 target = EA(addr - 1, word);
-                    if (DLABEL[target] == null) DLABEL[target] = String.Concat("D", Octal(target));
-                    if ((op == 3) || (op == 4)) TAGS[target] |= Tag.Write; // STA, STB
-                    else if (op == 12) TAGS[target] |= Tag.Read | Tag.Write; // IMS
-                    else TAGS[target] |= Tag.Read;
+                    Boolean ind = ((word & 0x400) != 0);
+                    Boolean map = ((word & 0x200) != 0);
+                    Int32 target = MemOpAddr(addr - 1, word);
+                    switch (op)
+                    {
+                        case 1: // LAA
+                        case 2: // LBA
+                        case 5: // AMA
+                        case 6: // SMA
+                        case 7: // MPY
+                        case 8: // DIV
+                        case 13: // CMA
+                        case 14: // AMB
+                            DTAG[target] |= DTag.Read;
+                            break;
+                        case 3: // STA
+                        case 4: // STB
+                            DTAG[target] |= DTag.Write;
+                            break;
+                        case 12: // IMS
+                            DTAG[target] |= DTag.Read | DTag.Write;
+                            break;
+                    }
                 }
             }
         }
 
-        static String Decode(Int32 addr, Int32 word)
+        // disassemble a program word
+        static String Disassemble(Int32 addr, Int32 word)
         {
-            if (((TAGS[addr] & Tag.Call) != 0) && ((TAGS[addr] & Tag.EntryPoint) == 0)) return "DATA **";
-            if ((TAGS[addr] & Tag.Direct) != 0) return String.Format("DATA '{0}", Octal(word, 6));
-            if ((TAGS[addr] & Tag.Indirect) != 0)
+            Fragment frag = FindFragment(addr);
+            CTag ctag = CTAG[addr];
+            DTag dtag = DTAG[addr];
+            if (CTagIs(ctag, CTag.EntryPoint | CTag.Valid)) return DecodeOp(addr, word);
+            if ((CTagIs(ctag, CTag.Call)) && (frag != null)) return "DATA **";
+            if (CTagIs(ctag, CTag.Valid) && !DTagIs(dtag, DTag.Indirect)) return DecodeOp(addr, word);
+            if (DTagIs(dtag, DTag.Extended))
+            {
+                return String.Format("EAC  {0}", Label(word & 0x7fff, true));
+            }
+            if (DTagIs(dtag, DTag.Address) || DTagIs(dtag, DTag.Indirect))
             {
                 Boolean idx = ((word & 0x8000) != 0);
                 Boolean ind = ((word & 0x4000) != 0);
-                Int32 target = word & 0x3fff;
-                if ((TAGS[addr] & Tag.Map) != 0) target |= addr & 0x4000;
-                String arg = CLABEL[target];
-                if (arg == null) arg = DLABEL[target];
-                if (arg == null) arg = String.Concat("'", Octal(target));
-                return String.Format("DAC{0} {1}{2}", (ind) ? '*' : ' ', arg, (idx) ? ",1" : null);
+                word &= 0x3fff;
+                if (DTagIs(dtag, DTag.Map1)) word |= 0x4000;
+                return String.Format("DAC{0} {1}{2}", (ind) ? '*' : ' ', Label(word, true), (idx) ? ",1" : null);
             }
-            if ((TAGS[addr] & Tag.Extended) != 0)
+            if (DTagIs(dtag, DTag.Immediate))
             {
-                Int32 target = word & 0x7fff;
-                String arg = CLABEL[target];
-                if (arg == null) arg = DLABEL[target];
-                if (arg == null) arg = String.Concat("'", Octal(target));
-                return String.Format("EAC  {0}", arg);
+                return String.Format("DATA '{0}", Octal(word, 6));
             }
+            return String.Format("DATA {0}", Label(word, true));
+        }
+
+        // generate a label for an address
+        static String Label(Int32 addr, Boolean operand)
+        {
+            String num = Octal(addr);
+            if (addr >= 32768) return (operand) ? String.Concat("'", num) : null;
+            CTag ctag = CTAG[addr];
+            if (CTagIs(ctag, CTag.EntryPoint)) return String.Concat("E", num, (operand) ? null : ":"); // (E)ntry
+            if (CTagIs(ctag, CTag.Call)) return String.Concat("S", num, (operand) ? null : ":"); // (S)ubroutine
+            if (CTagIs(ctag, CTag.Branch)) return String.Concat("B", num, (operand) ? null : ":"); // (B)ranch target
+            DTag dtag = DTAG[addr];
+            if (DTagIs(dtag, DTag.Indirect | DTag.Write)) return String.Concat("V", num, (operand) ? null : ":"); // (V)ector
+            if (DTagIs(dtag, DTag.Indirect)) return String.Concat("I", num, (operand) ? null : ":"); // (I)ndirect
+            if (DTagIs(dtag, DTag.Read | DTag.Write)) return String.Concat("D", num, (operand) ? null : ":"); // (D)ata
+            if (DTagIs(dtag, DTag.Write)) return String.Concat("W", num, (operand) ? null : ":"); // (W)rite only
+            if (DTagIs(dtag, DTag.Read)) return String.Concat("R", num, (operand) ? null : ":"); // (R)ead only
+            return (operand) ? String.Concat("'", num) : null;
+        }
+
+        // decode an instruction word
+        static String DecodeOp(Int32 addr, Int32 word)
+        {
             Int32 op = (word >> 12) & 15;
             if (op == 0) // augmented 00 instructions
             {
@@ -756,9 +854,7 @@ namespace Disassembler
                 Boolean map = ((word & 0x200) != 0);
                 Int32 target = word & 0x1ff;
                 if (map) target |= addr & 0x7e00;
-                String arg = CLABEL[target];
-                if (arg == null) arg = DLABEL[target];
-                if (arg == null) arg = String.Concat("'", Octal(target));
+                String arg = Label(target, true);
                 switch (op)
                 {
                     case 1: return String.Format("LAA{0} {1}{2}", (ind) ? '*' : ' ', arg, (idx) ? ",1" : null);
@@ -778,32 +874,44 @@ namespace Disassembler
             }
         }
 
-        static Int32 EA(Int32 PC, Int32 IR)
+        // calculate the address referenced by a memory instruction
+        static Int32 MemOpAddr(Int32 PC, Int32 IR)
         {
+            Int32 op = (IR >> 12) & 15;
+            Boolean idx = ((IR & 0x800) != 0);
             Boolean ind = ((IR & 0x400) != 0);
             Boolean map = ((IR & 0x200) != 0);
             Int32 addr = IR & 511;
             if (map) addr |= PC & 0x7e00;
-            if (ind) addr = Indirect(PC, addr, true);
+            DTag tag = DTag.Indirect;
+            // if instruction is BRU* (non-indexed) and destination is a Call, don't tag this as Indirect
+            if ((op == 9) && (ind) && (!idx) && CTagIs(addr, CTag.Call)) tag = DTag.None;
+            while (ind)
+            {
+                DTAG[addr] |= tag;
+                tag = DTag.Indirect;
+                Int32 word = CORE[addr];
+                ind = ((word & 0x4000) != 0);
+                addr = (word & 0x3fff) | (PC & 0x4000);
+            }
             return addr;
         }
 
-        static Int32 Indirect(Int32 addr, Boolean map)
-        {
-            return Indirect(addr, addr, map);
-        }
-
-        static Int32 Indirect(Int32 PC, Int32 addr, Boolean map)
+        // calculate the address referenced by an augmented instruction
+        static Int32 AugOpAddr(Int32 addr, Boolean map)
         {
             Boolean ind;
+            Int32 PC = (addr - 1) & 0x4000;
+            DTag tag = DTag.None;
             do
             {
-                DLABEL[addr] = String.Concat("I", Octal(addr));
-                TAGS[addr] |= Tag.Indirect | Tag.Read;
+                if (map) DTAG[addr] |= (PC == 0) ? DTag.Map0 : DTag.Map1;
+                DTAG[addr] |= tag;
+                tag = DTag.Indirect;
                 Int32 word = CORE[addr];
                 ind = ((word & 0x4000) != 0);
                 addr = word & 0x3fff;
-                if (map) addr |= PC & 0x4000;
+                if (map) addr |= PC;
             } while (ind);
             return addr;
         }
