@@ -29,7 +29,6 @@
 // treat jumps to invalid instructions as invalid themselves
 // non-fragment instructions both read and written are probably data
 // non-fragment instructions in general are probably data
-// an operand of 0 should probably never be treated as a label
 // LOB/PIE/PID/CEU/TEU/MOP/MIP with a Call tag is probably not an instruction, but the next word probably is
 
 
@@ -706,7 +705,7 @@ namespace Disassembler
             if (CTagIs(ctag, CTag.Valid) && !DTagIs(dtag, DTag.Indirect)) return DecodeOp(addr, word);
             if (DTagIs(dtag, DTag.Extended))
             {
-                return String.Format("EAC  {0}", Label(word & 0x7fff, true));
+                return String.Format("EAC  {0}", Label(word & 0x7fff, true, true));
             }
             if (DTagIs(dtag, DTag.Address) || DTagIs(dtag, DTag.Indirect))
             {
@@ -726,6 +725,12 @@ namespace Disassembler
         // generate a label for an address
         static String Label(Int32 addr, Boolean operand)
         {
+            return Label(addr, operand, false);
+        }
+
+        static String Label(Int32 addr, Boolean operand, Boolean force)
+        {
+            if ((addr == 0) && (operand) && (!force)) return "0";
             String num = Octal(addr);
             if (addr >= 32768) return (operand) ? String.Concat("'", num) : null;
             CTag ctag = CTAG[addr];
@@ -898,7 +903,7 @@ namespace Disassembler
                 Boolean map = ((word & 0x200) != 0);
                 Int32 target = word & 0x1ff;
                 if (map) target |= addr & 0x7e00;
-                String arg = Label(target, true);
+                String arg = Label(target, true, (((op == 9) || (op == 10)) && (!idx)));
                 switch (op)
                 {
                     case 1: return String.Format("LAA{0} {1}{2}", (ind) ? '*' : ' ', arg, (idx) ? ",1" : null);
