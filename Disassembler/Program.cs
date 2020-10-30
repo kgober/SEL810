@@ -25,6 +25,12 @@
 // Allow a non-instruction after SPB (inline argument)
 // Identify reachable code
 // Generate references for reads and writes
+// remove Call tags without HasReturn
+// treat jumps to invalid instructions as invalid themselves
+// non-fragment instructions both read and written are probably data
+// non-fragment instructions in general are probably data
+// an operand of 0 should probably never be treated as a label
+// LOB/PIE/PID/CEU/TEU/MOP/MIP with a Call tag is probably not an instruction, but the next word probably is
 
 
 using System;
@@ -38,9 +44,12 @@ namespace Disassembler
     {
         None        = 0x00,
         Valid       = 0x01, // this is a valid opcode
-        Branch      = 0x02, // target of a branch (BRU, LOB)
-        Call        = 0x04, // target of a call (SPB)
-        EntryPoint  = 0x08, // program entry point
+        Reachable   = 0x02, // this is reachable code
+        Branch      = 0x04, // target of a branch (BRU, LOB)
+        Call        = 0x08, // target of a call (SPB)
+        HasReturn   = 0x10, // target of a return (BRU*)
+        Return      = 0x20, // return from subroutine
+        EntryPoint  = 0x80, // program entry point
     }
 
     [Flags]
@@ -60,6 +69,7 @@ namespace Disassembler
     class Program
     {
         static TextWriter OUT = Console.Out;
+        static Boolean DEBUG = false;
 
         static UInt16[] CORE = new UInt16[32768];   // core memory image
         static CTag[] CTAG = new CTag[32768];       // code tags
@@ -81,6 +91,7 @@ namespace Disassembler
                 Console.Error.WriteLine("  -i addr imagefile - load core image file at 'addr'");
                 Console.Error.WriteLine("  -a tapefile - load absolute tape file");
                 Console.Error.WriteLine("  -s num - skip first 'num' bytes of next file");
+                Console.Error.WriteLine("  -d - enable extra debug output");
                 return;
             }
 
@@ -94,6 +105,10 @@ namespace Disassembler
                     if (arg.Length == 1)
                     {
                         // - by itself, ignore this for now
+                    }
+                    else if ((arg[1] == 'd') || (arg[1] == 'D'))
+                    {
+                        DEBUG = true;
                     }
                     else if ((arg[1] == 'e') || (arg[1] == 'E'))
                     {
@@ -160,13 +175,8 @@ namespace Disassembler
                 if (frag != null) frag.Source.Add(frag);
             }
 
-            // exclude dead fragments (fragments that are never entered, and which don't enter other fragments)
-            List<Fragment> L = new List<Fragment>();
-            foreach (Fragment frag in FRAGS) if ((frag.Source.Count == 0) && (frag.Target.Count == 0)) L.Add(frag);
-            foreach (Fragment frag in L) FRAGS.Remove(frag);
-
             // assign tags
-            foreach (Fragment frag in FRAGS) AssignTags(frag);
+            foreach (Fragment frag in FRAGS) if (!frag.Dead) AssignTags(frag);
 
             // generate listing
             Fragment current = FindFragment(p);
@@ -184,6 +194,25 @@ namespace Disassembler
                 else if (frag != current)
                 {
                     OUT.WriteLine();
+                }
+                if (DEBUG)
+                {
+                    Char F = (frag == null) ? ',' : (frag.Dead) ? ';' : '#';
+                    Char V = (CTagIs(p, CTag.Valid)) ? 'V' : '-';
+                    Char E = (CTagIs(p, CTag.EntryPoint)) ? 'E' : '-';
+                    Char B = (CTagIs(p, CTag.Branch)) ? 'B' : '-';
+                    Char S = (CTagIs(p, CTag.Call)) ? 'S' : '-';
+                    Char R = (CTagIs(p, CTag.HasReturn) || CTagIs(p, CTag.Return)) ? 'R' : '-';
+                    Boolean r = DTagIs(p, DTag.Read);
+                    Boolean w = DTagIs(p, DTag.Write);
+                    Char D = (r && w) ? 'D' : (r) ? 'R' : (w) ? 'W' : '-';
+                    Char I = (DTagIs(p, DTag.Indirect)) ? 'I' : '-';
+                    Char L = (DTagIs(p, DTag.Extended)) ? 'L' : '-';
+                    Boolean m0 = DTagIs(p, DTag.Map0);
+                    Boolean m1 = DTagIs(p, DTag.Map1);
+                    Char M = (m0 && m1) ? '2' : (m1) ? '1' : (m0) ? '0' : '-';
+                    Char A = (DTagIs(p, DTag.Address)) ? 'A' : (DTagIs(p, DTag.Immediate)) ? 'I' : '-';
+                    text = String.Format("{0,-16}{1} {2}{3}{4}{5}{6} {7}{8}{9}{10}{11}", text, F, V, E, B, S, R, D, I, L, M, A);
                 }
                 OUT.WriteLine("{0}  {1:x4}[{2}{3}]{4}  {5,-9} {6}", Octal(p), word, ASCII(word >> 8), ASCII(word), Octal(word, 6), label, text);
                 current = frag;
@@ -268,6 +297,11 @@ namespace Disassembler
             public Int32 Length
             {
                 get { return mLength; }
+            }
+
+            public Boolean Dead
+            {
+                get { return ((Target.Count == 0) && (Source.Count == 0)); }
             }
 
             public void AdjustStart(Int32 amount)
@@ -551,7 +585,7 @@ namespace Disassembler
             return ((tag & flags) == flags);
         }
 
-        // assign data tags to locations referenced by a fragment
+        // assign tags to locations referenced by a fragment
         static void AssignTags(Fragment frag)
         {
             Int32 addr = frag.Start;
@@ -624,8 +658,11 @@ namespace Disassembler
                 }
                 else // memory reference instructions
                 {
+                    Boolean idx = ((word & 0x800) != 0);
                     Boolean ind = ((word & 0x400) != 0);
                     Boolean map = ((word & 0x200) != 0);
+                    Int32 ptr = word & 0x1ff;
+                    if (map) ptr |= (addr - 1) & 0x7e00;
                     Int32 target = MemOpAddr(addr - 1, word);
                     switch (op)
                     {
@@ -645,6 +682,13 @@ namespace Disassembler
                             break;
                         case 12: // IMS
                             DTAG[target] |= DTag.Read | DTag.Write;
+                            break;
+                        case 9: // BRU
+                            if ((ind) && (!idx) && (CTagIs(ptr, CTag.Call)))
+                            {
+                                CTAG[addr - 1] |= CTag.Return;
+                                CTAG[ptr] |= CTag.HasReturn;
+                            }
                             break;
                     }
                 }
