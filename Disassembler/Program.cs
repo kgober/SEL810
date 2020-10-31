@@ -27,9 +27,9 @@
 // Generate references for reads and writes
 // remove Call tags without HasReturn
 // treat jumps to invalid instructions as invalid themselves
-// non-fragment instructions both read and written are probably data
 // non-fragment instructions in general are probably data
 // LOB/PIE/PID/CEU/TEU/MOP/MIP with a Call tag is probably not an instruction, but the next word probably is
+// identify branch targets for indexed BRU/SPB
 
 
 using System;
@@ -206,12 +206,11 @@ namespace Disassembler
                     Boolean w = DTagIs(p, DTag.Write);
                     Char D = (r && w) ? 'D' : (r) ? 'R' : (w) ? 'W' : '-';
                     Char I = (DTagIs(p, DTag.Indirect)) ? 'I' : '-';
-                    Char L = (DTagIs(p, DTag.Extended)) ? 'L' : '-';
                     Boolean m0 = DTagIs(p, DTag.Map0);
                     Boolean m1 = DTagIs(p, DTag.Map1);
                     Char M = (m0 && m1) ? '2' : (m1) ? '1' : (m0) ? '0' : '-';
-                    Char A = (DTagIs(p, DTag.Address)) ? 'A' : (DTagIs(p, DTag.Immediate)) ? 'I' : '-';
-                    text = String.Format("{0,-16}{1} {2}{3}{4}{5}{6} {7}{8}{9}{10}{11}", text, F, V, E, B, S, R, D, I, L, M, A);
+                    Char A = (DTagIs(p, DTag.Extended)) ? 'A' : (DTagIs(p, DTag.Address)) ? 'I' : (DTagIs(p, DTag.Immediate)) ? 'D' : '-';
+                    text = String.Format("{0,-16}{1} {2}{3}{4}{5}{6} {7}{8}{9}{10}", text, F, V, E, B, S, R, D, I, M, A);
                 }
                 OUT.WriteLine("{0}  {1:x4}[{2}{3}]{4}  {5,-9} {6}", Octal(p), word, ASCII(word >> 8), ASCII(word), Octal(word, 6), label, text);
                 current = frag;
@@ -702,6 +701,8 @@ namespace Disassembler
             DTag dtag = DTAG[addr];
             if (CTagIs(ctag, CTag.EntryPoint | CTag.Valid)) return DecodeOp(addr, word);
             if ((CTagIs(ctag, CTag.Call)) && (frag != null)) return "DATA **";
+            if (CTagIs(ctag, CTag.Valid) && (frag != null)) return DecodeOp(addr, word);
+            if (CTagIs(ctag, CTag.Valid) && (frag == null) && DTagIs(dtag, DTag.Read | DTag.Write)) return String.Format("DATA {0}", Label(word, true)); 
             if (CTagIs(ctag, CTag.Valid) && !DTagIs(dtag, DTag.Indirect)) return DecodeOp(addr, word);
             if (DTagIs(dtag, DTag.Extended))
             {
