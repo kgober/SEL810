@@ -22,7 +22,6 @@
 
 // To Do:
 // Consider merging adjacent fragments
-// Allow a non-instruction after SPB (inline argument)
 // Identify reachable code
 // Generate references for reads and writes
 // remove Call tags without HasReturn
@@ -71,6 +70,7 @@ namespace Disassembler
         static Boolean DEBUG = false;
 
         static UInt16[] CORE = new UInt16[32768];   // core memory image
+        static Fragment[] FCACHE = new Fragment[32768];
         static CTag[] CTAG = new CTag[32768];       // code tags
         static DTag[] DTAG = new DTag[32768];       // data tags
 
@@ -312,19 +312,17 @@ namespace Disassembler
         // identify code fragments (sequences of valid instructions terminated by HLT, LOB, or BRU)
         static void IdentifyFragments()
         {
-            Fragment frag;
+            for (Int32 addr = 32767; addr >= 0; addr--) if (CORE[addr] != 0) FCACHE[addr] = TryFragment(addr);
             Int32 start = 0;
             while (start < 32768)
             {
-                if ((CORE[start] != 0) && ((frag = TryFragment(start)) != null))
-                {
-                    FRAGS.Add(frag);
-                    start += frag.Length;
-                }
-                else
-                {
-                    start++;
-                }
+                while ((start < 32768) && (FCACHE[start] == null)) start++;
+                if (start == 32768) break;
+                Fragment frag = FCACHE[start];
+                if (frag.Start != start) Console.Error.WriteLine("FRAG START = {0}, START = {1}", Octal(frag.Start), Octal(start));
+                FRAGS.Add(frag);
+                start += frag.Length;
+                if (DEBUG) Console.Error.WriteLine("Fragment at {0}, Length {1:D0}, next word is {2}", Octal(frag.Start), frag.Length, FCACHE[frag.Start + frag.Length] == null? "not frag" : "frag");
             }
         }
 
@@ -473,6 +471,7 @@ namespace Disassembler
                 else if (op == 10) // SPB
                 {
                     CTAG[addr++] |= CTag.Valid;
+                    if ((FCACHE[addr] == null) && (FCACHE[addr + 1] != null)) addr++; // assume operand
                     min = addr + 1;
                 }
                 else if (op == 12) // IMS
