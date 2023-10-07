@@ -1,5 +1,5 @@
 // JSON.cs
-// Copyright © 2013,2014,2016,2017,2020 Kenneth Gober
+// Copyright © 2013,2014,2016,2017,2020,2023 Kenneth Gober
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -54,6 +54,37 @@ namespace JSON
             else
                 mValue = null;
             mArrayLength = 0;
+        }
+
+        // deep copy constructor
+        internal Value(Value value)
+        {
+            mType = value.mType;
+            if (mType == Type.Array)
+            {
+                Dictionary<Int32, Value> newDict = new Dictionary<Int32, Value>();
+                Dictionary<Int32, Value> oldDict = value.mValue as Dictionary<Int32, Value>;
+                foreach (KeyValuePair<Int32, Value> kvp in oldDict)
+                {
+                    newDict.Add(kvp.Key, new Value(kvp.Value));
+                }
+                mValue = newDict;
+            }
+            else if (mType == Type.Object)
+            {
+                Dictionary<String, Value> newDict = new Dictionary<String, Value>();
+                Dictionary<String, Value> oldDict = value.mValue as Dictionary<String, Value>;
+                foreach (KeyValuePair<String, Value> kvp in oldDict)
+                {
+                    newDict.Add(kvp.Key, new Value(kvp.Value));
+                }
+                mValue = newDict;
+            }
+            else
+            {
+                mValue = value.mValue;
+            }
+            mArrayLength = value.mArrayLength;
         }
 
         internal Value(Boolean value)
