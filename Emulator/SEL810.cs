@@ -1021,6 +1021,22 @@ namespace Emulator
             IR = T;
         }
 
+        // A memory reference instruction carries a 9-bit address field.  The Map bit allows the
+        // instruction to directly address map 0, or the map the instruction is in.
+        //
+        // The Index bit allows the mapped address to be adjusted by the value of the index
+        // register (B, or X if configured) allowing the entire memory to be addressed.
+        // 
+        // The Indirect bit allows the mapped/indexed address to be treated as an indirect address.
+        // Indirect address words carry a 14-bit address field (as well as Index and Indirect bits).
+        // The 15th bit is taken from the instruction address, allowing access to the same half of
+        // memory the instruction is in unless indexing is used.
+        //
+        // Augmented instructions do not have an address field, although some instructions may
+        // include an operand word for which the Indirect and Map bits have meaning.  The Indirect
+        // bit in such instructions has the usual meaning, and the Map bit indicates whether or not
+        // the 15th bit of an indirect address is taken from the instruction address.
+
         private UInt16 Indirect(UInt16 addr, Boolean M)
         {
             Boolean x, i;
