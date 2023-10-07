@@ -20,16 +20,17 @@
 // SOFTWARE.
 
 
-// Network Protocol:
-// Interrupts: send 'I', receive '-' or 24 hex digits (highest to lowest priority)
-// CommandReady: send 'C', receive '1' (ready) or '0' (not ready)
-// ReadReady: send 'R', receive '1' (ready) or '0' (not ready)
-// WriteReady: send 'W', receive '1' (ready) or '0' (not ready)
-// Test: send 'T' followed by 4 hex digits (MSB first), receive '1' or '0'
-// Command: send 'c' followed by 4 hex digits, receive '.'
-// Read: send 'r', receive 4 hex digits
-// Write: send 'w' followed by 4 hex digits, receive '.'
-// Exit: send 'x', receive 'x'
+// Network Protocol (device side):
+// Interrupts: receive 'I', send 24 hex digits (highest to lowest priority)
+//   note: trailing '0' digits may be replaced by a single '-'
+// CommandReady: receive 'C', send '1' (ready) or '0' (not ready)
+// ReadReady: receive 'R', send '1' (ready) or '0' (not ready)
+// WriteReady: receive 'W', send '1' (ready) or '0' (not ready)
+// Test: receive 'T' followed by 4 hex digits (MSB first), send '1' or '0'
+// Command: receive 'c' followed by 4 hex digits, send '.'
+// Read: receive 'r', send 4 hex digits (or '????' if nothing to read)
+// Write: receive 'w' followed by 4 hex digits, send '.'
+// Exit: receive 'x', send 'x'
 
 // Configuration file format:
 // num tape-file-pathname
